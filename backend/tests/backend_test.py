@@ -198,23 +198,31 @@ class TestTransactions:
         assert requests.get(f"{API}/transactions").status_code == 401
 
 
-# --- Forecast upsert ---
+# --- Forecast consolidation (sales_forecast overrides legacy /forecast) ---
 class TestForecast:
-    def test_upsert_and_persist(self, client):
+    def test_legacy_upsert_is_overridden_by_sales_forecast(self, client):
+        """Legacy POST /forecast still works but sales_forecast entries take precedence in the consolidation."""
         r = client.post(f"{API}/forecast", json={"year": 2026, "month": 7, "amount": 3500000, "notes": "TEST_fc"})
         assert r.status_code in (200, 201), r.text
+
+        # If sales_forecast entries exist for Jul 2026, the report should use their sum, NOT the legacy value.
+        sf_rows = client.get(f"{API}/sales-forecast", params={"year": 2026}).json()
+        sf_jul_sum = sum(x["amount"] for x in sf_rows if x["month"] == 7)
+
         rows = client.get(f"{API}/reports/forecast-vs-actual", params={"year": 2026}).json()["rows"]
         jul = [x for x in rows if x["month"] == 7][0]
-        assert jul["forecast"] == 3500000
+        if sf_jul_sum > 0:
+            assert jul["forecast"] == sf_jul_sum, "sales_forecast sum must override legacy /forecast value"
+            assert jul["line_items"] >= 1
+        else:
+            assert jul["forecast"] == 3500000
 
-        r2 = client.post(f"{API}/forecast", json={"year": 2026, "month": 7, "amount": 4000000, "notes": "TEST_fc2"})
-        assert r2.status_code in (200, 201)
-        rows = client.get(f"{API}/reports/forecast-vs-actual", params={"year": 2026}).json()["rows"]
-        jul = [x for x in rows if x["month"] == 7][0]
-        assert jul["forecast"] == 4000000, "upsert on year+month failed (duplicate rows?)"
-
+        # Legacy /forecast is still upsert on (year, month)
+        client.post(f"{API}/forecast", json={"year": 2026, "month": 7, "amount": 4000000, "notes": "TEST_fc2"})
         fcs = client.get(f"{API}/forecast", params={"year": 2026}).json()
-        assert len([f for f in fcs if f["month"] == 7]) == 1
+        jul_docs = [f for f in fcs if f["month"] == 7]
+        assert len(jul_docs) == 1
+        assert jul_docs[0]["amount"] == 4000000
         assert all("_id" not in f for f in fcs)
 
 

@@ -306,6 +306,82 @@ class ForecastIn(BaseModel):
     notes: str = ""
 
 
+class SalesForecastIn(BaseModel):
+    year: int
+    month: int  # 1-12
+    project_id: str = ""  # "" == unallocated / general
+    amount: float
+    notes: str = ""
+
+
+def _sf_out(d: dict) -> dict:
+    return {
+        "id": str(d["_id"]),
+        "year": d["year"], "month": d["month"],
+        "project_id": d.get("project_id", ""),
+        "amount": d["amount"], "notes": d.get("notes", ""),
+        "updated_at": d.get("updated_at", ""),
+    }
+
+
+@api_router.get("/sales-forecast")
+async def list_sales_forecast(
+    user: dict = Depends(get_current_user),
+    year: Optional[int] = None,
+    project_id: Optional[str] = None,
+):
+    q = {}
+    if year:
+        q["year"] = year
+    if project_id:
+        q["project_id"] = project_id
+    docs = await db.sales_forecast.find(q).sort([("year", 1), ("month", 1)]).to_list(2000)
+    return [_sf_out(d) for d in docs]
+
+
+@api_router.post("/sales-forecast")
+async def create_sales_forecast(payload: SalesForecastIn, user: dict = Depends(get_current_user)):
+    if payload.month < 1 or payload.month > 12:
+        raise HTTPException(400, "month must be 1..12")
+    doc = payload.model_dump()
+    doc["created_at"] = datetime.now(timezone.utc).isoformat()
+    doc["updated_at"] = doc["created_at"]
+    doc["created_by"] = user["email"]
+    result = await db.sales_forecast.insert_one(doc)
+    doc["_id"] = result.inserted_id
+    return _sf_out(doc)
+
+
+@api_router.put("/sales-forecast/{fid}")
+async def update_sales_forecast(fid: str, payload: SalesForecastIn, user: dict = Depends(get_current_user)):
+    if payload.month < 1 or payload.month > 12:
+        raise HTTPException(400, "month must be 1..12")
+    try:
+        oid = ObjectId(fid)
+    except Exception:
+        raise HTTPException(400, "Invalid id")
+    update = {**payload.model_dump(),
+              "updated_at": datetime.now(timezone.utc).isoformat(),
+              "updated_by": user["email"]}
+    result = await db.sales_forecast.update_one({"_id": oid}, {"$set": update})
+    if result.matched_count == 0:
+        raise HTTPException(404, "Not found")
+    doc = await db.sales_forecast.find_one({"_id": oid})
+    return _sf_out(doc)
+
+
+@api_router.delete("/sales-forecast/{fid}")
+async def delete_sales_forecast(fid: str, user: dict = Depends(get_current_user)):
+    try:
+        oid = ObjectId(fid)
+    except Exception:
+        raise HTTPException(400, "Invalid id")
+    r = await db.sales_forecast.delete_one({"_id": oid})
+    if r.deleted_count == 0:
+        raise HTTPException(404, "Not found")
+    return {"ok": True}
+
+
 @api_router.get("/forecast")
 async def list_forecast(user: dict = Depends(get_current_user), year: Optional[int] = None):
     q = {}
@@ -318,6 +394,7 @@ async def list_forecast(user: dict = Depends(get_current_user), year: Optional[i
 
 @api_router.post("/forecast")
 async def upsert_forecast(payload: ForecastIn, user: dict = Depends(get_current_user)):
+    """Legacy month-only forecast (single value per month). Kept for backward compat."""
     if payload.month < 1 or payload.month > 12:
         raise HTTPException(400, "month must be 1..12")
     key = {"year": payload.year, "month": payload.month}
@@ -335,7 +412,11 @@ async def upsert_forecast(payload: ForecastIn, user: dict = Depends(get_current_
 
 @api_router.delete("/forecast/{fid}")
 async def delete_forecast(fid: str, user: dict = Depends(get_current_user)):
-    r = await db.forecast.delete_one({"_id": ObjectId(fid)})
+    try:
+        oid = ObjectId(fid)
+    except Exception:
+        raise HTTPException(400, "Invalid id")
+    r = await db.forecast.delete_one({"_id": oid})
     if r.deleted_count == 0:
         raise HTTPException(404, "Not found")
     return {"ok": True}
@@ -343,8 +424,10 @@ async def delete_forecast(fid: str, user: dict = Depends(get_current_user)):
 
 @api_router.get("/reports/forecast-vs-actual")
 async def forecast_vs_actual(user: dict = Depends(get_current_user), year: Optional[int] = None):
+    """Consolidated: actual Revenue transactions vs summed Sales Forecast line-items per month.
+    Legacy per-month `forecast` docs are added on top if a month has no sales_forecast entries."""
     year = year or datetime.now(timezone.utc).year
-    # Actual revenue per month from transactions
+    # Actual revenue per month
     docs = await db.transactions.find({"type": "Revenue"}).to_list(20000)
     actual = {m: 0 for m in range(1, 13)}
     for d in docs:
@@ -354,11 +437,23 @@ async def forecast_vs_actual(user: dict = Depends(get_current_user), year: Optio
             continue
         if dt.year == year:
             actual[dt.month] = actual.get(dt.month, 0) + d["amount"]
-    # Forecast per month
-    fdocs = await db.forecast.find({"year": year}).to_list(500)
+
+    # Consolidated forecast from sales_forecast line items
     forecast = {m: 0 for m in range(1, 13)}
-    for f in fdocs:
-        forecast[f["month"]] = f["amount"]
+    line_counts = {m: 0 for m in range(1, 13)}
+    async for sf in db.sales_forecast.find({"year": year}):
+        m = sf["month"]
+        if 1 <= m <= 12:
+            forecast[m] += sf.get("amount", 0)
+            line_counts[m] += 1
+
+    # Backfill with legacy `forecast` docs only where sales_forecast has no entries
+    legacy = await db.forecast.find({"year": year}).to_list(500)
+    for f in legacy:
+        m = f["month"]
+        if 1 <= m <= 12 and line_counts[m] == 0:
+            forecast[m] = f.get("amount", 0)
+
     rows = []
     for m in range(1, 13):
         rev = actual[m]
@@ -369,6 +464,7 @@ async def forecast_vs_actual(user: dict = Depends(get_current_user), year: Optio
             "forecast": fc, "actual": rev,
             "variance": rev - fc,
             "achievement_pct": (rev / fc * 100) if fc else None,
+            "line_items": line_counts[m],
         })
     return {"year": year, "rows": rows,
             "total_forecast": sum(forecast.values()),
@@ -454,6 +550,8 @@ async def startup():
     await db.transactions.create_index("type")
     await db.transactions.create_index("project_id")
     await db.forecast.create_index([("year", 1), ("month", 1)], unique=True)
+    await db.sales_forecast.create_index([("year", 1), ("month", 1)])
+    await db.sales_forecast.create_index("project_id")
     await seed_all()
 
 
