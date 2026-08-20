@@ -30,8 +30,12 @@ export function AuthProvider({ children }) {
   const logout = useCallback(async () => {
     try {
       await api.post("/auth/logout");
-    } catch (_error) {
-      // Cookie may already be gone; treat as best-effort logout.
+    } catch (error) {
+      // Cookie may already be gone; treat as best-effort logout so the UI still resets.
+      if (typeof window !== "undefined" && window.__DEV__) {
+        // eslint-disable-next-line no-console
+        console.warn("logout: server call failed, clearing client state anyway", error);
+      }
     }
     setUser(false);
   }, []);

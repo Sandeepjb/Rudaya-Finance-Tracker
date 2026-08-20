@@ -28,6 +28,12 @@ const emptyForm = () => ({
   notes: "",
 });
 
+function getSaveLabel(saving, editing) {
+  if (saving) return "Saving…";
+  if (editing) return "Update Entry";
+  return "Create Entry";
+}
+
 export default function SalesForecast() {
   const [items, setItems] = useState([]);
   const [meta, setMeta] = useState({ project_ids: [] });
@@ -50,6 +56,8 @@ export default function SalesForecast() {
 
   useEffect(() => {
     api.get("/meta").then((r) => setMeta(r.data));
+    // api and setMeta are stable module/react identities; effect must run once on mount.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => { load(); }, [load]);
@@ -266,7 +274,7 @@ function SalesForecastDrawer({ open, onOpenChange, editing, meta, onSaved, defau
             <Textarea data-testid="sf-notes" className="rounded-none mt-1" rows={3} value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} />
           </div>
           <Button data-testid="sf-save" onClick={save} disabled={disabled} className="w-full rounded-none bg-neutral-900 hover:bg-neutral-700 h-11">
-            {saving ? "Saving…" : (editing ? "Update Entry" : "Create Entry")}
+            {getSaveLabel(saving, editing)}
           </Button>
         </div>
       </SheetContent>

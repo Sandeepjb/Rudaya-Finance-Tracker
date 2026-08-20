@@ -181,7 +181,7 @@ class TestForecastVsActual:
         if by_m[7]["forecast"]:
             assert abs(by_m[7]["achievement_pct"] - by_m[7]["actual"] / by_m[7]["forecast"] * 100) < 0.01
         # months with no forecast must have None achievement
-        assert by_m[1]["achievement_pct"] is None
+        assert by_m[1]["achievement_pct"] is None  # noqa: E711 — PEP 8: use `is` for None comparisons
         assert by_m[1]["line_items"] == 0
 
     def test_sales_forecast_overrides_legacy(self, client):

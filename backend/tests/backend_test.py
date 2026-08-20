@@ -85,7 +85,7 @@ class TestAuth:
             return u
 
         u = asyncio.get_event_loop().run_until_complete(_get())
-        assert u is not None
+        assert u is not None  # noqa: E711 — PEP 8: use `is` for None comparisons
         assert u["password_hash"].startswith("$2b$")
 
     def test_brute_force_lockout(self, creds):

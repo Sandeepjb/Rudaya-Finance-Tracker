@@ -48,6 +48,8 @@ export default function Transactions() {
 
   useEffect(() => {
     api.get("/meta").then((r) => setMeta(r.data));
+    // api and setMeta are stable identities; effect must run only once on mount.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => { load(); }, [load]);

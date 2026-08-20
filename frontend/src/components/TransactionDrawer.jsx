@@ -19,6 +19,12 @@ const emptyForm = () => ({
   notes: "",
 });
 
+function getSaveLabel(saving, editing) {
+  if (saving) return "Saving…";
+  if (editing) return "Update Entry";
+  return "Create Entry";
+}
+
 export default function TransactionDrawer({ open, onOpenChange, editing, meta, onSaved }) {
   const [form, setForm] = useState(emptyForm());
   const [saving, setSaving] = useState(false);
@@ -100,7 +106,7 @@ export default function TransactionDrawer({ open, onOpenChange, editing, meta, o
             <Textarea data-testid="txn-notes" className="rounded-none mt-1" rows={3} value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} />
           </div>
           <Button data-testid="txn-save" onClick={save} disabled={disabled} className="w-full rounded-none bg-neutral-900 hover:bg-neutral-700 h-11">
-            {saving ? "Saving…" : (editing ? "Update Entry" : "Create Entry")}
+            {getSaveLabel(saving, editing)}
           </Button>
         </div>
       </SheetContent>
