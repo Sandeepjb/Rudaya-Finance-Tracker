@@ -8,6 +8,7 @@ import Dashboard from "@/pages/Dashboard";
 import Transactions from "@/pages/Transactions";
 import ProjectPnl from "@/pages/ProjectPnl";
 import Monthly from "@/pages/Monthly";
+import Forecast from "@/pages/Forecast";
 import Settings from "@/pages/Settings";
 
 function Protected({ children }) {
@@ -36,6 +37,7 @@ function App() {
             <Route path="/transactions" element={<Protected><Transactions /></Protected>} />
             <Route path="/project-pnl" element={<Protected><ProjectPnl /></Protected>} />
             <Route path="/monthly" element={<Protected><Monthly /></Protected>} />
+            <Route path="/forecast" element={<Protected><Forecast /></Protected>} />
             <Route path="/settings" element={<Protected><Settings /></Protected>} />
           </Routes>
           <Toaster position="top-right" />

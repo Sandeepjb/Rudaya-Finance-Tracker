@@ -298,6 +298,83 @@ async def monthly(user: dict = Depends(get_current_user), year: Optional[int] = 
     return rows
 
 
+# --- Forecast endpoints ---
+class ForecastIn(BaseModel):
+    year: int
+    month: int  # 1-12
+    amount: float
+    notes: str = ""
+
+
+@api_router.get("/forecast")
+async def list_forecast(user: dict = Depends(get_current_user), year: Optional[int] = None):
+    q = {}
+    if year:
+        q["year"] = year
+    docs = await db.forecast.find(q).sort([("year", 1), ("month", 1)]).to_list(500)
+    return [{"id": str(d["_id"]), "year": d["year"], "month": d["month"],
+             "amount": d["amount"], "notes": d.get("notes", "")} for d in docs]
+
+
+@api_router.post("/forecast")
+async def upsert_forecast(payload: ForecastIn, user: dict = Depends(get_current_user)):
+    if payload.month < 1 or payload.month > 12:
+        raise HTTPException(400, "month must be 1..12")
+    key = {"year": payload.year, "month": payload.month}
+    await db.forecast.update_one(
+        key,
+        {"$set": {**payload.model_dump(),
+                  "updated_at": datetime.now(timezone.utc).isoformat(),
+                  "updated_by": user["email"]}},
+        upsert=True,
+    )
+    doc = await db.forecast.find_one(key)
+    return {"id": str(doc["_id"]), "year": doc["year"], "month": doc["month"],
+            "amount": doc["amount"], "notes": doc.get("notes", "")}
+
+
+@api_router.delete("/forecast/{fid}")
+async def delete_forecast(fid: str, user: dict = Depends(get_current_user)):
+    r = await db.forecast.delete_one({"_id": ObjectId(fid)})
+    if r.deleted_count == 0:
+        raise HTTPException(404, "Not found")
+    return {"ok": True}
+
+
+@api_router.get("/reports/forecast-vs-actual")
+async def forecast_vs_actual(user: dict = Depends(get_current_user), year: Optional[int] = None):
+    year = year or datetime.now(timezone.utc).year
+    # Actual revenue per month from transactions
+    docs = await db.transactions.find({"type": "Revenue"}).to_list(20000)
+    actual = {m: 0 for m in range(1, 13)}
+    for d in docs:
+        try:
+            dt = datetime.fromisoformat(d["date"].replace("Z", ""))
+        except Exception:
+            continue
+        if dt.year == year:
+            actual[dt.month] = actual.get(dt.month, 0) + d["amount"]
+    # Forecast per month
+    fdocs = await db.forecast.find({"year": year}).to_list(500)
+    forecast = {m: 0 for m in range(1, 13)}
+    for f in fdocs:
+        forecast[f["month"]] = f["amount"]
+    rows = []
+    for m in range(1, 13):
+        rev = actual[m]
+        fc = forecast[m]
+        rows.append({
+            "year": year, "month": m,
+            "label": datetime(year, m, 1).strftime("%b"),
+            "forecast": fc, "actual": rev,
+            "variance": rev - fc,
+            "achievement_pct": (rev / fc * 100) if fc else None,
+        })
+    return {"year": year, "rows": rows,
+            "total_forecast": sum(forecast.values()),
+            "total_actual": sum(actual.values())}
+
+
 @api_router.get("/reports/project-pnl")
 async def project_pnl(user: dict = Depends(get_current_user)):
     docs = await db.transactions.find({}).to_list(20000)
@@ -376,6 +453,7 @@ async def startup():
     await db.transactions.create_index("date")
     await db.transactions.create_index("type")
     await db.transactions.create_index("project_id")
+    await db.forecast.create_index([("year", 1), ("month", 1)], unique=True)
     await seed_all()
 
 

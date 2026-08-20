@@ -1,11 +1,12 @@
 import React from "react";
 import { NavLink, useNavigate } from "react-router-dom";
 import { useAuth } from "@/lib/auth";
-import { Lightning, ChartBar, ListChecks, Buildings, Calendar, SignOut, Gear } from "@phosphor-icons/react";
+import { Lightning, ChartBar, ListChecks, Buildings, Calendar, SignOut, Gear, Target } from "@phosphor-icons/react";
 
 const items = [
   { to: "/", label: "Dashboard", icon: ChartBar, testid: "nav-dashboard" },
   { to: "/transactions", label: "Transactions", icon: ListChecks, testid: "nav-transactions" },
+  { to: "/forecast", label: "Forecast", icon: Target, testid: "nav-forecast" },
   { to: "/project-pnl", label: "Project P&L", icon: Buildings, testid: "nav-project-pnl" },
   { to: "/monthly", label: "Monthly", icon: Calendar, testid: "nav-monthly" },
   { to: "/settings", label: "Settings", icon: Gear, testid: "nav-settings" },
