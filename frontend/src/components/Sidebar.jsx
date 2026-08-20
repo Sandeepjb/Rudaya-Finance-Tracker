@@ -1,7 +1,7 @@
 import React from "react";
 import { NavLink, useNavigate } from "react-router-dom";
 import { useAuth } from "@/lib/auth";
-import { Lightning, ChartBar, ListChecks, Buildings, Calendar, SignOut, Gear, Target } from "@phosphor-icons/react";
+import { ChartBar, ListChecks, Buildings, Calendar, SignOut, Gear, Target } from "@phosphor-icons/react";
 
 const items = [
   { to: "/", label: "Dashboard", icon: ChartBar, testid: "nav-dashboard" },
@@ -18,15 +18,13 @@ export default function Sidebar() {
   return (
     <aside className="w-60 shrink-0 bg-white border-r border-neutral-200 flex flex-col h-screen sticky top-0">
       <div className="px-5 py-5 border-b border-neutral-200">
-        <div className="flex items-center gap-2">
-          <div className="w-8 h-8 bg-yellow-400 flex items-center justify-center">
-            <Lightning weight="fill" size={20} className="text-neutral-900" />
-          </div>
-          <div>
-            <div className="font-heading font-bold text-sm tracking-tight leading-tight">RUDAYA POWER</div>
-            <div className="text-[10px] uppercase tracking-[0.2em] text-neutral-500">Finance Tracker</div>
-          </div>
-        </div>
+        <img
+          src="/rudaya-logo.png"
+          alt="Rudaya Powers Pvt. Ltd."
+          className="h-11 w-auto object-contain"
+          data-testid="sidebar-logo"
+        />
+        <div className="text-[10px] uppercase tracking-[0.2em] text-neutral-500 mt-2">Finance Tracker</div>
       </div>
       <nav className="flex-1 py-4">
         {items.map((it) => (
@@ -38,7 +36,7 @@ export default function Sidebar() {
             className={({ isActive }) =>
               `flex items-center gap-3 px-5 py-2.5 text-sm border-l-2 transition-colors ${
                 isActive
-                  ? "border-yellow-400 bg-neutral-50 text-neutral-900 font-medium"
+                  ? "border-red-600 bg-neutral-50 text-neutral-900 font-medium"
                   : "border-transparent text-neutral-600 hover:bg-neutral-50 hover:text-neutral-900"
               }`
             }

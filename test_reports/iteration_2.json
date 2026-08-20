@@ -1,0 +1,40 @@
+{
+  "summary": "Full regression pass (backend pytest + Playwright UI) after code-review refactors and Rudaya logo insertion. 21/22 backend tests pass; all UI regression scenarios pass (cookie-only auth survives reload/hard-refresh, logout + protected-route redirects, dashboard KPIs, transactions filters/search/date-range/CRUD/CSV, forecast upsert, project P&L, monthly, settings->drawer propagation, logos load). Only gap: no brute-force login lockout (playbook item) and edge proxy rewrites CORS headers to '*' on the public URL.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/auth/login", "issue": "No brute-force protection/lockout. 6 consecutive wrong-password attempts all return 401 (expected 423/429 after 5). Playbook requires lockout."},
+      {"endpoint": "POST /api/auth/logout", "issue": "response.delete_cookie('access_token', path='/') omits secure=True/samesite='none' used when setting the cookie. Browser deletion worked in Chromium, but attribute mismatch is fragile across browsers — mirror the set attributes on delete."},
+      {"endpoint": "ALL /api/*", "issue": "Preview edge proxy rewrites CORS to 'Access-Control-Allow-Origin: *' and drops 'Allow-Credentials: true' on the public URL. App-level CORS is correct (verified on localhost:8001, echoes explicit origin + credentials). Credentialed XHR currently works in the preview because it is same-origin; a cross-origin production origin would be blocked by the edge. Informational."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Transactions filters", "issues": ["Date range inputs use the native browser date picker (type=date, mm/dd/yyyy US format) instead of the shadcn Calendar/Popover used elsewhere; inconsistent with the Indian date format shown in the table (YYYY-MM-DD). Same for txn-date in the drawer."]},
+      {"screen": "Login hero", "issues": ["Logo PNG has an opaque white background box on the dark hero image — a transparent PNG or a padded white card would look cleaner."]},
+      {"screen": "All chart pages", "issues": ["Recharts logs repeated 'width(-1) and height(-1)' warnings on mount/route change; set an explicit minHeight/minWidth on the ResponsiveContainer parent."]}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/backend_test.py", "/app/backend/tests/cleanup_qa_data.py", "/app/test_reports/pytest/pytest_results.xml"],
+  "action_items": [
+    "Add login brute-force lockout (5 failed attempts -> 423/429 with cooldown) per auth playbook.",
+    "Match cookie attributes on logout delete_cookie (httponly/secure/samesite='none', path='/').",
+    "Optional: replace native date inputs with shadcn Calendar popover for consistency; add minHeight to chart containers."
+  ],
+  "critical_code_review_comments": [
+    "get_current_user still accepts an Authorization Bearer header fallback; harmless but keep it intentional or drop it now that the frontend is cookie-only.",
+    "PUT /api/transactions/{id} and DELETE use ObjectId(txn_id) without validation — a malformed id raises bson InvalidId -> 500. Wrap in try/except and return 400/404.",
+    "No per-user scoping on transactions/forecast (single-tenant by design); document it if multi-user is planned.",
+    "seed_admin correctly re-hashes when ADMIN_PASSWORD changes and admin hash verified as $2b$ bcrypt."
+  ],
+  "updated_files": ["/app/backend/tests/backend_test.py", "/app/backend/tests/cleanup_qa_data.py"],
+  "success_rate": {"backend": "95% (21/22)", "frontend": "100%"},
+  "seed_data_creation": "Created and then removed: TEST_/QA_ project IDs, accounts and transactions (cleanup script run, 2 project_ids + 2 accounts deleted). NOTE: forecast for Jul-2026 was written during testing and now holds 3,500,000 (total forecast 2026 = 41,00,000) — restore the original value if it mattered.",
+  "should_call_test_agent_after_fix": false,
+  "should_main_agent_self_test": true,
+  "test_credentials": "sandeepjb2014@gmail.com / Rudaya@2026 (from /app/memory/test_credentials.md, valid)",
+  "context_for_next_testing_agent": "Backend pytest suite lives at /app/backend/tests/backend_test.py (22 tests: auth cookie flow, CORS, bcrypt format, lockout, reports, txn CRUD, forecast upsert, meta). Only test_brute_force_lockout fails (feature not implemented). UI selects are radix (not <select>) — use click trigger + get_by_role('option') with force=True; date/search filters are debounced (~1.5s). Transactions table shows a placeholder row 'No transactions match your filters.' so count rows via table text check. Project P&L / charts need ~3-4s after route change before data renders.",
+  "rca_of_the_issue": "No functional regressions from the refactor. Cookie-only auth verified: login sets httpOnly+Secure+SameSite=None access_token, localStorage stays empty, page reload and hard refresh on /transactions keep the session, logout clears the cookie and all six protected routes redirect to /login. Logos (/rudaya-logo.png) return 200 and render (naturalWidth 1134) in both sidebar and login page."
+}

@@ -3,6 +3,8 @@ import Layout from "@/components/Layout";
 import { api, inr } from "@/lib/api";
 import { TrendUp, TrendDown, Wallet, ChartLine, Bank } from "@phosphor-icons/react";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend, LineChart, Line } from "recharts";
+import { TypeBadge } from "@/components/TypeBadge";
+import { typeColor, TICK_STYLE, TOOLTIP_STYLE, LEGEND_STYLE, yTickLakh } from "@/lib/format";
 
 const Kpi = ({ label, value, color, icon: Icon, testid }) => (
   <div className="rudaya-card p-5" data-testid={testid}>
@@ -20,16 +22,18 @@ export default function Dashboard() {
   const [recent, setRecent] = useState([]);
 
   useEffect(() => {
-    (async () => {
-      const [s, m, t] = await Promise.all([
-        api.get("/reports/summary"),
-        api.get("/reports/monthly"),
-        api.get("/transactions"),
-      ]);
+    let alive = true;
+    Promise.all([
+      api.get("/reports/summary"),
+      api.get("/reports/monthly"),
+      api.get("/transactions"),
+    ]).then(([s, m, t]) => {
+      if (!alive) return;
       setSummary(s.data);
       setMonthly(m.data);
       setRecent(t.data.slice(0, 8));
-    })();
+    });
+    return () => { alive = false; };
   }, []);
 
   return (
@@ -54,10 +58,10 @@ export default function Dashboard() {
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={monthly}>
                 <CartesianGrid strokeDasharray="0" stroke="#E5E7EB" vertical={false} />
-                <XAxis dataKey="label" stroke="#6B7280" tick={{ fontSize: 11, fontFamily: "JetBrains Mono" }} />
-                <YAxis stroke="#6B7280" tick={{ fontSize: 11, fontFamily: "JetBrains Mono" }} tickFormatter={(v) => (v / 100000).toFixed(1) + "L"} />
-                <Tooltip formatter={(v) => inr(v)} contentStyle={{ border: "1px solid #111827", borderRadius: 0, fontSize: 12 }} />
-                <Legend wrapperStyle={{ fontSize: 12 }} />
+                <XAxis dataKey="label" stroke="#6B7280" tick={TICK_STYLE} />
+                <YAxis stroke="#6B7280" tick={TICK_STYLE} tickFormatter={yTickLakh} />
+                <Tooltip formatter={(v) => inr(v)} contentStyle={TOOLTIP_STYLE} />
+                <Legend wrapperStyle={LEGEND_STYLE} />
                 <Bar dataKey="revenue" fill="#059669" name="Revenue" />
                 <Bar dataKey="cost" fill="#DC2626" name="Cost" />
                 <Bar dataKey="expense" fill="#D97706" name="Expense" />
@@ -73,9 +77,9 @@ export default function Dashboard() {
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={monthly}>
                 <CartesianGrid strokeDasharray="0" stroke="#E5E7EB" vertical={false} />
-                <XAxis dataKey="label" stroke="#6B7280" tick={{ fontSize: 10, fontFamily: "JetBrains Mono" }} />
-                <YAxis stroke="#6B7280" tick={{ fontSize: 10, fontFamily: "JetBrains Mono" }} tickFormatter={(v) => (v / 100000).toFixed(1) + "L"} />
-                <Tooltip formatter={(v) => inr(v)} contentStyle={{ border: "1px solid #111827", borderRadius: 0, fontSize: 12 }} />
+                <XAxis dataKey="label" stroke="#6B7280" tick={TICK_STYLE} />
+                <YAxis stroke="#6B7280" tick={TICK_STYLE} tickFormatter={yTickLakh} />
+                <Tooltip formatter={(v) => inr(v)} contentStyle={TOOLTIP_STYLE} />
                 <Line type="monotone" dataKey="net_profit" stroke="#2563EB" strokeWidth={2} dot={{ r: 3 }} />
               </LineChart>
             </ResponsiveContainer>
@@ -105,7 +109,7 @@ export default function Dashboard() {
                 <td className="px-3 py-2.5"><TypeBadge type={t.type} /></td>
                 <td className="px-3 py-2.5 text-sm">{t.account}</td>
                 <td className="px-3 py-2.5 font-mono-tab text-xs text-neutral-600">{t.project_id}</td>
-                <td className="px-5 py-2.5 text-right font-mono-tab text-sm font-medium" style={{ color: t.type === "Revenue" ? "#059669" : t.type === "Cost" ? "#DC2626" : "#D97706" }}>{inr(t.amount)}</td>
+                <td className="px-5 py-2.5 text-right font-mono-tab text-sm font-medium" style={{ color: typeColor(t.type) }}>{inr(t.amount)}</td>
               </tr>
             ))}
           </tbody>
@@ -113,13 +117,4 @@ export default function Dashboard() {
       </div>
     </Layout>
   );
-}
-
-export function TypeBadge({ type }) {
-  const map = {
-    Revenue: "border-emerald-600 text-emerald-700 bg-emerald-50",
-    Cost: "border-red-600 text-red-700 bg-red-50",
-    Expense: "border-amber-600 text-amber-700 bg-amber-50",
-  };
-  return <span className={`inline-block text-[10px] uppercase tracking-wider px-2 py-0.5 border ${map[type] || "border-neutral-400 text-neutral-700 bg-neutral-50"}`}>{type}</span>;
 }

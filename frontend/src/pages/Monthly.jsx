@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import Layout from "@/components/Layout";
 import { api, inr } from "@/lib/api";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend } from "recharts";
+import { TICK_STYLE, TOOLTIP_STYLE, LEGEND_STYLE, yTickLakh } from "@/lib/format";
 
 export default function Monthly() {
   const [rows, setRows] = useState([]);
@@ -14,10 +15,10 @@ export default function Monthly() {
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={rows}>
               <CartesianGrid strokeDasharray="0" stroke="#E5E7EB" vertical={false} />
-              <XAxis dataKey="label" stroke="#6B7280" tick={{ fontSize: 11, fontFamily: "JetBrains Mono" }} />
-              <YAxis stroke="#6B7280" tick={{ fontSize: 11, fontFamily: "JetBrains Mono" }} tickFormatter={(v) => (v / 100000).toFixed(1) + "L"} />
-              <Tooltip formatter={(v) => inr(v)} contentStyle={{ border: "1px solid #111827", borderRadius: 0, fontSize: 12 }} />
-              <Legend wrapperStyle={{ fontSize: 12 }} />
+              <XAxis dataKey="label" stroke="#6B7280" tick={TICK_STYLE} />
+              <YAxis stroke="#6B7280" tick={TICK_STYLE} tickFormatter={yTickLakh} />
+              <Tooltip formatter={(v) => inr(v)} contentStyle={TOOLTIP_STYLE} />
+              <Legend wrapperStyle={LEGEND_STYLE} />
               <Bar dataKey="revenue" fill="#059669" name="Revenue" />
               <Bar dataKey="cost" fill="#DC2626" name="Cost" />
               <Bar dataKey="expense" fill="#D97706" name="Expense" />

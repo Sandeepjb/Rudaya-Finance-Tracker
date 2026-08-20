@@ -7,6 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { toast } from "sonner";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend, LineChart, Line } from "recharts";
 import { FloppyDisk, Target } from "@phosphor-icons/react";
+import { TICK_STYLE, TOOLTIP_STYLE, LEGEND_STYLE, yTickLakh, yTickPct } from "@/lib/format";
 
 const currentYear = new Date().getFullYear();
 const YEARS = [currentYear - 1, currentYear, currentYear + 1, currentYear + 2];
@@ -95,10 +96,10 @@ export default function Forecast() {
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={chartData}>
               <CartesianGrid strokeDasharray="0" stroke="#E5E7EB" vertical={false} />
-              <XAxis dataKey="label" stroke="#6B7280" tick={{ fontSize: 11, fontFamily: "JetBrains Mono" }} />
-              <YAxis stroke="#6B7280" tick={{ fontSize: 11, fontFamily: "JetBrains Mono" }} tickFormatter={(v) => (v / 100000).toFixed(1) + "L"} />
-              <Tooltip formatter={(v) => inr(v)} contentStyle={{ border: "1px solid #111827", borderRadius: 0, fontSize: 12 }} />
-              <Legend wrapperStyle={{ fontSize: 12 }} />
+              <XAxis dataKey="label" stroke="#6B7280" tick={TICK_STYLE} />
+              <YAxis stroke="#6B7280" tick={TICK_STYLE} tickFormatter={yTickLakh} />
+              <Tooltip formatter={(v) => inr(v)} contentStyle={TOOLTIP_STYLE} />
+              <Legend wrapperStyle={LEGEND_STYLE} />
               <Bar dataKey="forecast" fill="#111827" name="Forecast" />
               <Bar dataKey="actual" fill="#059669" name="Actual" />
             </BarChart>
@@ -195,9 +196,9 @@ export default function Forecast() {
           <ResponsiveContainer width="100%" height="100%">
             <LineChart data={chartData}>
               <CartesianGrid strokeDasharray="0" stroke="#E5E7EB" vertical={false} />
-              <XAxis dataKey="label" stroke="#6B7280" tick={{ fontSize: 11, fontFamily: "JetBrains Mono" }} />
-              <YAxis stroke="#6B7280" tick={{ fontSize: 11, fontFamily: "JetBrains Mono" }} tickFormatter={(v) => v + "%"} />
-              <Tooltip formatter={(v) => v + "%"} contentStyle={{ border: "1px solid #111827", borderRadius: 0, fontSize: 12 }} />
+              <XAxis dataKey="label" stroke="#6B7280" tick={TICK_STYLE} />
+              <YAxis stroke="#6B7280" tick={TICK_STYLE} tickFormatter={yTickPct} />
+              <Tooltip formatter={yTickPct} contentStyle={TOOLTIP_STYLE} />
               <Line type="monotone" dataKey="achievement" stroke="#2563EB" strokeWidth={2} dot={{ r: 3 }} name="Achievement %" />
             </LineChart>
           </ResponsiveContainer>

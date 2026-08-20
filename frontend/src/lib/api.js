@@ -3,15 +3,11 @@ import axios from "axios";
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 export const API = `${BACKEND_URL}/api`;
 
+// withCredentials=true sends the httpOnly `access_token` cookie set by the backend.
+// We deliberately do NOT read a token from localStorage anymore (XSS-safer).
 export const api = axios.create({
   baseURL: API,
   withCredentials: true,
-});
-
-api.interceptors.request.use((config) => {
-  const t = localStorage.getItem("token");
-  if (t) config.headers.Authorization = `Bearer ${t}`;
-  return config;
 });
 
 export function formatApiError(detail) {
