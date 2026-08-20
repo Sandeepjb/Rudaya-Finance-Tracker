@@ -1,0 +1,28 @@
+{
+  "summary": "First-finish smoke test of Rudaya Power Finance Tracker. Backend auth, transactions, meta, and reports all healthy. Frontend login, dashboard KPIs/charts, transactions listing/filtering, transaction drawer, Project P&L, Monthly and Settings pages render correctly. Logout works.",
+  "tested_scope": ["backend", "frontend", "auth", "integration"],
+  "passed": [
+    "POST /api/auth/login with admin credentials returns user + JWT token (200)",
+    "GET /api/auth/me authenticated request works (200)",
+    "GET /api/transactions returns 120 seeded transactions",
+    "GET /api/reports/summary matches expected: revenue 46,21,777.74; cost 35,43,755.5; expense 3,29,420.63; gross_profit 10,78,022.24; net_profit 7,48,601.61",
+    "GET /api/reports/project-pnl returns aggregated rows per project",
+    "GET /api/reports/monthly returns Apr-Sep 2026 buckets",
+    "Login UI: /login flow with admin creds redirects to dashboard",
+    "Dashboard KPI cards render with correct INR-formatted values (₹46,21,778 / ₹35,43,756 / ₹10,78,022 / ₹3,29,421 / ₹7,48,602)",
+    "Dashboard charts (chart-monthly-rev-vs-exp, chart-net-profit-trend) and recent-transactions table visible",
+    "Transactions page: 120 rows rendered; add-transaction-btn opens right-side drawer with all fields (date/type/account/amount/project/notes/save)",
+    "Type filter (Revenue) narrows table to 9 rows (matches backend count)",
+    "Project P&L page renders 12 project rows + TOTAL footer with correct aggregates",
+    "Monthly page renders 6 rows (Apr, May, Jun, Jul, Aug, Sep 2026) plus bar chart",
+    "Settings page loads with add-project and add-account inputs",
+    "Logout clears session and redirects to /login"
+  ],
+  "failed": [],
+  "action_items": [
+    "Minor (non-blocking): Recharts logs 'width(-1)/height(-1)' warnings during initial mount of some charts on route change; consider setting a minHeight on ResponsiveContainer parent."
+  ],
+  "success_rate": {"backend": "100%", "frontend": "100%"},
+  "retest_needed": false,
+  "full_testing_deferred": true
+}

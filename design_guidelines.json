@@ -1,0 +1,84 @@
+{
+  "project_name": "Rudaya Power Pvt. Ltd. Finance Tracker",
+  "theme_mode": "light",
+  "design_archetype": "ARCHETYPE 4: SWISS & HIGH-CONTRAST (Authority, Clarity, Truth)",
+  "vibe": "Industrial Precision, Data-Dense, Authoritative, Minimalist ERP",
+  "typography": {
+    "fonts": {
+      "headings": "'Outfit', sans-serif",
+      "body": "'IBM Plex Sans', sans-serif",
+      "data_and_numbers": "'JetBrains Mono', monospace"
+    },
+    "instructions": "Use Outfit for all Dashboard titles and card headers. Use IBM Plex Sans for general UI text. CRITICAL: Use JetBrains Mono for all financial figures, table cells with numbers, and dates to ensure tabular alignment. Implement tight letter spacing (`tracking-tight`) on large headers. Avoid generic fonts like Inter or Roboto for headings."
+  },
+  "colors": {
+    "background": "#F3F4F6",
+    "surface": "#FFFFFF",
+    "foreground": "#111827",
+    "border": "#E5E7EB",
+    "primary": "#111827",
+    "primary_foreground": "#FFFFFF",
+    "finance": {
+      "revenue": "#059669",
+      "expense": "#DC2626",
+      "net_profit": "#2563EB",
+      "warning": "#D97706"
+    },
+    "industrial_accent": "#FACC15",
+    "instructions": "Strict monochrome dominance. 95% of the UI should be black, white, and grays. Use color strictly as a function (Green for Revenue/Profit, Red for Expenses/Costs). The `industrial_accent` (Yellow) should be used minimally, perhaps as an active state indicator on the sidebar or a subtle focus ring. DO NOT use generic purple, teal-green, or soft gradients. Never use purely transparent overlays."
+  },
+  "visual_enhancers": {
+    "surface_strategy": "GRID BORDERS (The 'Technical' Look). Expose the skeleton.",
+    "borders": "1px solid crisp borders (`border-gray-200`). Avoid soft drop shadows; if elevation is needed, use a hard 2px offset shadow or rely entirely on border contrast.",
+    "border_radius": "Use sharp edges or very subtle rounding (`rounded-none` or `rounded-sm`). Avoid pill shapes for standard cards to maintain the structural ERP look.",
+    "hover_states": "Interactive elements must shift contrast boldly. e.g., Hovering a table row changes it to `bg-gray-50`. Hovering a primary button shifts from `bg-gray-900` to `bg-gray-700`."
+  },
+  "layouts_and_grids": {
+    "page_layout": "Sidebar navigation (left) with a rigid 1px right border. Main content area (right) with a sticky top header.",
+    "dashboard_grid": "High Density Grid. Top row: 5 KPI cards (`grid-cols-2 md:grid-cols-5`). Below: Main chart spanning full width or `col-span-3`, adjacent to a dense recent transactions list.",
+    "spacing": "Generous container spacing (`p-6` or `p-8`). Dense internal data spacing (`py-2`, `px-3` in tables) for maximum information density without feeling cramped.",
+    "forms": "Use right-side inspector drawers (Slide-overs) for the 'Add Transaction' dialog instead of standard center modals to keep the data table visible in the background."
+  },
+  "component_guidelines": {
+    "tables": "Must use Shadcn Table. Include a sticky header. Right-align all currency columns. Apply alternating row backgrounds or sharp bottom borders. Format numbers to South Asian (Indian) standard (e.g., ₹ 1,50,000.00).",
+    "charts": "Use Recharts (via Shadcn charts). Use crisp 2px stroke line charts or sharp bar charts. Disable filled area gradients to maintain the 'Swiss' objective look.",
+    "buttons": "Sharp corners (`rounded-sm`). High contrast. Primary buttons are deep black with white text.",
+    "inputs_and_selects": "Shadcn components (`Input`, `Select`, `Popover` + `Command` for combobox). Use `border-gray-300` and sharp corners. On focus, use a solid 2px ring of `ring-gray-900`."
+  },
+  "media_and_icons": {
+    "icons": {
+      "library": "@phosphor-icons/react",
+      "style": "Use 'regular' weight for clear, professional iconography. Do not use emojis.",
+      "installation": "yarn add @phosphor-icons/react"
+    },
+    "images": {
+      "login_background": {
+        "url": "https://images.unsplash.com/photo-1547895749-888a559fc2a7?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjY2NzN8MHwxfHNlYXJjaHwxfHxtb2Rlcm4lMjBpbmR1c3RyaWFsJTIwcGxhbnQlMjBjbGVhbiUyMGFyY2hpdGVjdHVyZXxlbnwwfHx8fDE3ODcyMDIyNjh8MA&ixlib=rb-4.1.0&q=85",
+        "description": "Yellow and black industrial factory. Use this as a full-bleed background for the Login/Register screen.",
+        "usage": "Overlay with a 50% black/dark gray solid or deeply saturated glassmorphism pane to ensure the login form is perfectly readable. Do NOT use this image on data dashboard screens."
+      }
+    }
+  },
+  "accessibility_and_testing": {
+    "contrast": "Ensure all text meets minimum 4.5:1 ratio. Financial numbers in green/red MUST be dark enough to read on white backgrounds (e.g., use Emerald 600 and Red 600, not light pastel variants).",
+    "testing_attributes": "CRITICAL: All interactive and key informational elements MUST include a `data-testid` attribute (e.g., `data-testid='login-submit-button'`, `data-testid='kpi-total-revenue'`). Use kebab-case and role-based naming."
+  },
+  "instructions_to_main_agent": [
+    "Load Google Fonts in index.html: <link href=\"https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&family=Outfit:wght@500;600;700&display=swap\" rel=\"stylesheet\">",
+    "Tailwind Config: Define custom fonts in tailwind.config.js theme (e.g., `fontFamily: { sans: ['IBM Plex Sans', 'sans-serif'], heading: ['Outfit', 'sans-serif'], mono: ['JetBrains Mono', 'monospace'] }`).",
+    "Add 'data-testid' to every button, link, form input, KPI card value, and chart container.",
+    "Implement the 'Project-wise P&L' as a matrix table (Projects on rows, metrics on columns: Revenue, Cost, Expense, Gross Profit, Net Profit) with a month filter.",
+    "The 'Add Transaction' form must use Shadcn components (Date Picker, Select for Type, Combobox for Account/Project) and should ideally appear in a Shadcn Sheet (drawer) to preserve table context.",
+    "Format all currency strings strictly with Indian Rupee symbol (₹) and Indian number formatting (`Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' })`)."
+  ],
+  "UNIVERSAL_GUIDELINES_FOR_MAIN_AGENT": [
+    "Do not converge toward generic 'AI slop' aesthetics (no soft purples, no rounded-xl everything, no generic centered layouts).",
+    "Create depth through layout contrast and 1px borders, avoiding muddy shadow stacking.",
+    "Never use `transition: all`. Target specific properties like `transition-colors` or `transition-transform`.",
+    "Do not add `text-align: center` to the root App container.",
+    "Never use AI assistant Emoji characters (🤖🧠💡) as icons. Rely solely on Phosphor Icons.",
+    "Prioritize pre-existing Shadcn components from `src/components/ui/` before building custom ones.",
+    "Use `sonner` for toast notifications (located in `src/components/ui/sonner`).",
+    "If using a layout wrapper, ensure the sidebar navigates cleanly and the main view handles internal scrolling properly."
+  ]
+}

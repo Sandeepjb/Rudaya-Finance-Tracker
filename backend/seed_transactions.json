@@ -1,0 +1,1082 @@
+[
+  {
+    "trans_id": 1,
+    "date": "2026-05-19T00:00:00",
+    "type": "Revenue",
+    "account": "RFT_Solar Projects",
+    "amount": 396853.0,
+    "project_id": "Solar_0001",
+    "notes": "Vivek Deshmukh Solar Project"
+  },
+  {
+    "trans_id": 2,
+    "date": "2026-07-16T00:00:00",
+    "type": "Revenue",
+    "account": "Goodyear",
+    "amount": 604365.24,
+    "project_id": "GYR-INDO_0001",
+    "notes": "Goodyear Indonationa PV15 x 2 qty PO# 8242330986 Dt 3-2-2026 Inv1214 Dt 29-05-2026"
+  },
+  {
+    "trans_id": 3,
+    "date": "2026-07-01T00:00:00",
+    "type": "Revenue",
+    "account": "Other",
+    "amount": 118611.0,
+    "project_id": "MECH_OTH_0007",
+    "notes": "Advance Intech Thialand PO#2026-05-158 dt 12-06-26(1242 USD) Inv1216 Dt 30-06-26"
+  },
+  {
+    "trans_id": 4,
+    "date": "2026-07-16T00:00:00",
+    "type": "Revenue",
+    "account": "PC Repairs and maintenance",
+    "amount": 35125.0,
+    "project_id": "OTH_0007",
+    "notes": "Ford Sanand DxD Repaire PO#2610101 dt 23-06-26 Inv#1215 dt 16-07-26"
+  },
+  {
+    "trans_id": 5,
+    "date": "2026-07-16T00:00:00",
+    "type": "Revenue",
+    "account": "Shipping  & Transportation/Special clearance chrg",
+    "amount": 6300.0,
+    "project_id": "OTH_0007",
+    "notes": "Ford Sanand DxD transporation PO#2611553 dt 16-07-26 Inv#1217 dt 16-07-26"
+  },
+  {
+    "trans_id": 6,
+    "date": "2026-08-10T00:00:00",
+    "type": "Revenue",
+    "account": "TATA /AAM",
+    "amount": 476100.0,
+    "project_id": "AAM-CH_0001",
+    "notes": "AAM Chakan ICS Def x 1 qty PO#63648 dt 15-07-26 Inv1218 dt 10-08-2026"
+  },
+  {
+    "trans_id": 7,
+    "date": "2026-04-23T00:00:00",
+    "type": "Cost",
+    "account": "RFT_Solar Projects",
+    "amount": 55069.0,
+    "project_id": "Solar_0001",
+    "notes": "Vivek Deshmukh Solar Project cost"
+  },
+  {
+    "trans_id": 8,
+    "date": "2026-04-18T00:00:00",
+    "type": "Cost",
+    "account": "Computer Spares",
+    "amount": 3013.0,
+    "project_id": "OTH_0007",
+    "notes": "1 Adaptor + 2 FAN for Dynics IPC LGB Jalna"
+  },
+  {
+    "trans_id": 9,
+    "date": "2026-06-30T00:00:00",
+    "type": "Cost",
+    "account": "Goodyear",
+    "amount": 375005.0,
+    "project_id": "GYR-INDO_0001",
+    "notes": "PV15 IPC for Goodyear Indonatia Dynics Inv66114 dt 29-05-26 ( 3920 USD )"
+  },
+  {
+    "trans_id": 10,
+    "date": "2026-06-09T00:00:00",
+    "type": "Cost",
+    "account": "Shipping  & Transportation/Special clearance chrg",
+    "amount": 90824.0,
+    "project_id": "GYR-INDO_0001",
+    "notes": "PV15 IPC for Goodyear Indonatia shipping ( Condor logistic ) Invoice:MUN-AE-26007 dt 09-06-2026"
+  },
+  {
+    "trans_id": 11,
+    "date": "2026-06-04T00:00:00",
+    "type": "Cost",
+    "account": "PC Repairs and maintenance",
+    "amount": 250.0,
+    "project_id": "OTH_0007",
+    "notes": "SMPS for LGB repair charges"
+  },
+  {
+    "trans_id": 12,
+    "date": "2026-07-24T00:00:00",
+    "type": "Cost",
+    "account": "Dynics",
+    "amount": 89389.0,
+    "project_id": "OTH_0007",
+    "notes": "Advance Intech Thialand PO1172 dt 12-06-2026 ( 917 USD)"
+  },
+  {
+    "trans_id": 13,
+    "date": "2026-07-16T00:00:00",
+    "type": "Cost",
+    "account": "Shipping  & Transportation/Special clearance chrg",
+    "amount": 1650.0,
+    "project_id": "OTH_0007",
+    "notes": "DTDC - Ford Sanand DxD transporation PO#2611553 dt 16-07-26 Inv#1217 dt 16-07-26"
+  },
+  {
+    "trans_id": 14,
+    "date": "2026-07-28T00:00:00",
+    "type": "Cost",
+    "account": "Software Licenses",
+    "amount": 12712.0,
+    "project_id": "OTH_0007",
+    "notes": "Windwos 11 lic from DCC Invoice# OSI26002624 dt 28-07-2026"
+  },
+  {
+    "trans_id": 15,
+    "date": "2026-09-07T00:00:00",
+    "type": "Cost",
+    "account": "Shipping  & Transportation/Special clearance chrg",
+    "amount": 9940.0,
+    "project_id": "AAM-CH_0001",
+    "notes": "AAM Chakan ICS Def x 1 qty JYT Invoice 14097 dt 07-08-2026"
+  },
+  {
+    "trans_id": 16,
+    "date": "2026-08-07T00:00:00",
+    "type": "Cost",
+    "account": "Shipping  & Transportation/Special clearance chrg",
+    "amount": 35000.0,
+    "project_id": "AAM-CH_0001",
+    "notes": "Custom Special clearance charges for 1 qty ICS defender AAM Chakan project"
+  },
+  {
+    "trans_id": 17,
+    "date": "2026-07-29T00:00:00",
+    "type": "Revenue",
+    "account": "Amara Raja",
+    "amount": 146520.0,
+    "project_id": "OTH_0007",
+    "notes": "PO#1119338696 dt 29-08-2026"
+  },
+  {
+    "trans_id": 18,
+    "date": "2026-07-13T00:00:00",
+    "type": "Revenue",
+    "account": "Ford",
+    "amount": 2833996.5,
+    "project_id": "FRD_GJ_0002",
+    "notes": "PO#2611364 dt 13-08-2026 for 3xEW24-CGR11 IPC"
+  },
+  {
+    "trans_id": 19,
+    "date": "2026-07-14T00:00:00",
+    "type": "Cost",
+    "account": "Dynics",
+    "amount": 1763923.5,
+    "project_id": "FRD_GJ_0002",
+    "notes": "PO#PO1173 dt 14-08- 26 ( USD 18279)"
+  },
+  {
+    "trans_id": 20,
+    "date": "2026-04-01T00:00:00",
+    "type": "Expense",
+    "account": "Petrol & Diesel",
+    "amount": 1196.76,
+    "project_id": "Fuel_Expense",
+    "notes": "Petrol & Disel"
+  },
+  {
+    "trans_id": 21,
+    "date": "2026-04-02T00:00:00",
+    "type": "Expense",
+    "account": "Other",
+    "amount": 500.0,
+    "project_id": "Investments",
+    "notes": "Gold Purchase"
+  },
+  {
+    "trans_id": 22,
+    "date": "2026-04-06T00:00:00",
+    "type": "Expense",
+    "account": "Misc. (Office Cleaning/electricity bill)",
+    "amount": 6687.0,
+    "project_id": "Office_Expenses",
+    "notes": "AC Servicing"
+  },
+  {
+    "trans_id": 23,
+    "date": "2026-04-09T00:00:00",
+    "type": "Expense",
+    "account": "Mobile/Telephone",
+    "amount": 1417.1,
+    "project_id": "Office_Expenses",
+    "notes": "Vodafone Bill"
+  },
+  {
+    "trans_id": 24,
+    "date": "2026-04-10T00:00:00",
+    "type": "Cost",
+    "account": "Amara Raja",
+    "amount": 300.0,
+    "project_id": "OTH_0007",
+    "notes": "Courier Charges for vendor form"
+  },
+  {
+    "trans_id": 25,
+    "date": "2026-04-12T00:00:00",
+    "type": "Expense",
+    "account": "Car and travel",
+    "amount": 150.0,
+    "project_id": "Fuel_Expense",
+    "notes": "CAR PUC"
+  },
+  {
+    "trans_id": 26,
+    "date": "2026-04-12T00:00:00",
+    "type": "Expense",
+    "account": "Tea Meal & Water Food",
+    "amount": 360.0,
+    "project_id": "Office_Expenses",
+    "notes": "Mehandale Dairy farm"
+  },
+  {
+    "trans_id": 27,
+    "date": "2026-04-13T00:00:00",
+    "type": "Expense",
+    "account": "Misc. (Office Cleaning/electricity bill)",
+    "amount": 130.0,
+    "project_id": "Office_Expenses",
+    "notes": "Chakan officen Electricity bill"
+  },
+  {
+    "trans_id": 28,
+    "date": "2026-04-13T00:00:00",
+    "type": "Expense",
+    "account": "Reimbursement/staff medical/ staff welfare",
+    "amount": 2000.0,
+    "project_id": "Office_Expenses",
+    "notes": "Staff Medical expenses"
+  },
+  {
+    "trans_id": 29,
+    "date": "2026-04-13T00:00:00",
+    "type": "Expense",
+    "account": "Reimbursement/staff medical/ staff welfare",
+    "amount": 1410.0,
+    "project_id": "Office_Expenses",
+    "notes": "Staff Medical expenses"
+  },
+  {
+    "trans_id": 30,
+    "date": "2026-04-14T00:00:00",
+    "type": "Expense",
+    "account": "Petrol & Diesel",
+    "amount": 1400.0,
+    "project_id": "Fuel_Expense",
+    "notes": "Petrol"
+  },
+  {
+    "trans_id": 31,
+    "date": "2026-04-16T00:00:00",
+    "type": "Expense",
+    "account": "Misc. (Office Cleaning/electricity bill)",
+    "amount": 1720.0,
+    "project_id": "Office_Expenses",
+    "notes": "Electricity bill"
+  },
+  {
+    "trans_id": 32,
+    "date": "2026-04-18T00:00:00",
+    "type": "Cost",
+    "account": "LGB Jalna",
+    "amount": 2562.0,
+    "project_id": "OTH_0007",
+    "notes": "CPU FAN for LGB"
+  },
+  {
+    "trans_id": 33,
+    "date": "2026-04-20T00:00:00",
+    "type": "Expense",
+    "account": "Petrol & Diesel",
+    "amount": 3534.68,
+    "project_id": "Fuel_Expense",
+    "notes": "Diesel"
+  },
+  {
+    "trans_id": 34,
+    "date": "2026-04-23T00:00:00",
+    "type": "Expense",
+    "account": "Car and travel",
+    "amount": 1500.0,
+    "project_id": "Fuel_Expense",
+    "notes": "Tyre Flat repaire"
+  },
+  {
+    "trans_id": 35,
+    "date": "2026-04-30T00:00:00",
+    "type": "Expense",
+    "account": "Car and travel",
+    "amount": 2642.74,
+    "project_id": "Fuel_Expense",
+    "notes": "2-Wheeler Servicing Inv011472JK01844 DT-30-APR-2026 (AMT 2292.98+349.76)"
+  },
+  {
+    "trans_id": 36,
+    "date": "2026-05-02T00:00:00",
+    "type": "Expense",
+    "account": "Other",
+    "amount": 500.0,
+    "project_id": "Investments",
+    "notes": "Gold Purchase"
+  },
+  {
+    "trans_id": 37,
+    "date": "2026-05-07T00:00:00",
+    "type": "Expense",
+    "account": "Car and travel",
+    "amount": 1066.64,
+    "project_id": "Fuel_Expense",
+    "notes": "Petrol"
+  },
+  {
+    "trans_id": 38,
+    "date": "2026-05-07T00:00:00",
+    "type": "Expense",
+    "account": "Other",
+    "amount": 411.0,
+    "project_id": "Office_Expenses",
+    "notes": "Tirupati hospitality"
+  },
+  {
+    "trans_id": 39,
+    "date": "2026-05-07T00:00:00",
+    "type": "Expense",
+    "account": "Car and travel",
+    "amount": 2045.0,
+    "project_id": "Office_Expenses",
+    "notes": "Baramati"
+  },
+  {
+    "trans_id": 40,
+    "date": "2026-05-09T00:00:00",
+    "type": "Expense",
+    "account": "Petrol & Diesel",
+    "amount": 319.88,
+    "project_id": "Fuel_Expense",
+    "notes": "petrol"
+  },
+  {
+    "trans_id": 41,
+    "date": "2026-05-09T00:00:00",
+    "type": "Expense",
+    "account": "Mobile/Telephone",
+    "amount": 1417.0,
+    "project_id": "Office_Expenses",
+    "notes": "Voafone"
+  },
+  {
+    "trans_id": 42,
+    "date": "2026-05-13T00:00:00",
+    "type": "Expense",
+    "account": "Tea Meal & Water Food",
+    "amount": 2195.0,
+    "project_id": "Office_Expenses",
+    "notes": "Baramati Shivansh party"
+  },
+  {
+    "trans_id": 43,
+    "date": "2026-05-14T00:00:00",
+    "type": "Expense",
+    "account": "Misc. (Office Cleaning/electricity bill)",
+    "amount": 160.0,
+    "project_id": "Office_Expenses",
+    "notes": "Chakan Office eletricity bill"
+  },
+  {
+    "trans_id": 44,
+    "date": "2026-05-15T00:00:00",
+    "type": "Expense",
+    "account": "Car and travel",
+    "amount": 300.0,
+    "project_id": "Office_Expenses",
+    "notes": "Vishal Travel to Baramati"
+  },
+  {
+    "trans_id": 45,
+    "date": "2026-05-16T00:00:00",
+    "type": "Expense",
+    "account": "Petrol & Diesel",
+    "amount": 500.0,
+    "project_id": "Fuel_Expense",
+    "notes": "petrol"
+  },
+  {
+    "trans_id": 46,
+    "date": "2026-05-16T00:00:00",
+    "type": "Expense",
+    "account": "Misc. (Office Cleaning/electricity bill)",
+    "amount": 1970.0,
+    "project_id": "Office_Expenses",
+    "notes": "Silver Space MSEB Bill"
+  },
+  {
+    "trans_id": 47,
+    "date": "2026-05-19T00:00:00",
+    "type": "Cost",
+    "account": "LGB Jalna",
+    "amount": 220.0,
+    "project_id": "OTH_0007",
+    "notes": "FAN Soldering cgarges"
+  },
+  {
+    "trans_id": 48,
+    "date": "2026-05-21T00:00:00",
+    "type": "Expense",
+    "account": "Salary",
+    "amount": 2300.0,
+    "project_id": "Wages/Salary",
+    "notes": "Rudra Bhujbal Salary"
+  },
+  {
+    "trans_id": 49,
+    "date": "2026-05-21T00:00:00",
+    "type": "Cost",
+    "account": "Amara Raja",
+    "amount": 512.0,
+    "project_id": "OTH_0007",
+    "notes": "KVM Adaptor 23-05-2026 300/- paid to Trio"
+  },
+  {
+    "trans_id": 50,
+    "date": "2026-05-22T00:00:00",
+    "type": "Expense",
+    "account": "Salary",
+    "amount": 2620.0,
+    "project_id": "Wages/Salary",
+    "notes": "Rudra Bhujbal"
+  },
+  {
+    "trans_id": 51,
+    "date": "2026-05-22T00:00:00",
+    "type": "Expense",
+    "account": "PC Repairs and maintenance",
+    "amount": 176.0,
+    "project_id": "OTH_0007",
+    "notes": "Robotics DNA pvt adaptor"
+  },
+  {
+    "trans_id": 52,
+    "date": "2026-05-27T00:00:00",
+    "type": "Expense",
+    "account": "Tax Componant /OD interest and charges",
+    "amount": 3540.0,
+    "project_id": "Office_Expenses",
+    "notes": "AQB Service"
+  },
+  {
+    "trans_id": 53,
+    "date": "2026-05-27T00:00:00",
+    "type": "Expense",
+    "account": "Mobile/Telephone",
+    "amount": 2591.0,
+    "project_id": "Office_Expenses",
+    "notes": "April and May Landline bill"
+  },
+  {
+    "trans_id": 54,
+    "date": "2026-05-30T00:00:00",
+    "type": "Expense",
+    "account": "Car and travel",
+    "amount": 4149.6,
+    "project_id": "Fuel_Expense",
+    "notes": "disel"
+  },
+  {
+    "trans_id": 55,
+    "date": "2026-06-04T00:00:00",
+    "type": "Expense",
+    "account": "Petrol & Diesel",
+    "amount": 500.0,
+    "project_id": "Fuel_Expense",
+    "notes": "Petrol"
+  },
+  {
+    "trans_id": 56,
+    "date": "2026-06-07T00:00:00",
+    "type": "Expense",
+    "account": "Petrol & Diesel",
+    "amount": 1607.0,
+    "project_id": "Fuel_Expense",
+    "notes": "Petrol"
+  },
+  {
+    "trans_id": 57,
+    "date": "2026-06-08T00:00:00",
+    "type": "Expense",
+    "account": "Mobile/Telephone",
+    "amount": 1417.18,
+    "project_id": "Office_Expenses",
+    "notes": "Mobile bill"
+  },
+  {
+    "trans_id": 58,
+    "date": "2026-06-11T00:00:00",
+    "type": "Expense",
+    "account": "Petrol & Diesel",
+    "amount": 800.0,
+    "project_id": "Fuel_Expense",
+    "notes": "Petrol"
+  },
+  {
+    "trans_id": 59,
+    "date": "2026-06-12T00:00:00",
+    "type": "Expense",
+    "account": "Misc. (Office Cleaning/electricity bill)",
+    "amount": 150.0,
+    "project_id": "Office_Expenses",
+    "notes": "Chakan Office"
+  },
+  {
+    "trans_id": 60,
+    "date": "2026-06-13T00:00:00",
+    "type": "Expense",
+    "account": "Advertising",
+    "amount": 799.0,
+    "project_id": "Office_Expenses",
+    "notes": "Saturday Club business conference meeting"
+  },
+  {
+    "trans_id": 61,
+    "date": "2026-06-14T00:00:00",
+    "type": "Expense",
+    "account": "Salary",
+    "amount": 7000.0,
+    "project_id": "Wages/Salary",
+    "notes": "Rudra Bhujbal"
+  },
+  {
+    "trans_id": 62,
+    "date": "2026-06-15T00:00:00",
+    "type": "Expense",
+    "account": "Misc. (Office Cleaning/electricity bill)",
+    "amount": 1700.0,
+    "project_id": "Office_Expenses",
+    "notes": "Silver Space MSEB Bill"
+  },
+  {
+    "trans_id": 63,
+    "date": "2026-06-15T00:00:00",
+    "type": "Expense",
+    "account": "Misc. (Office Cleaning/electricity bill)",
+    "amount": 5920.0,
+    "project_id": "Office_Expenses",
+    "notes": "Nandanvan MSEB Bill"
+  },
+  {
+    "trans_id": 64,
+    "date": "2026-06-19T00:00:00",
+    "type": "Expense",
+    "account": "Car and travel",
+    "amount": 329.05,
+    "project_id": "Fuel_Expense",
+    "notes": "petrol"
+  },
+  {
+    "trans_id": 65,
+    "date": "2026-06-20T00:00:00",
+    "type": "Expense",
+    "account": "Software Licenses",
+    "amount": 13894.0,
+    "project_id": "Office_Expenses",
+    "notes": "Microsoft licensing"
+  },
+  {
+    "trans_id": 66,
+    "date": "2026-06-21T00:00:00",
+    "type": "Expense",
+    "account": "Car and travel",
+    "amount": 4305.0,
+    "project_id": "Fuel_Expense",
+    "notes": "Diesel"
+  },
+  {
+    "trans_id": 67,
+    "date": "2026-06-23T00:00:00",
+    "type": "Expense",
+    "account": "Mobile/Telephone",
+    "amount": 1296.0,
+    "project_id": "Office_Expenses",
+    "notes": "Landline Bill"
+  },
+  {
+    "trans_id": 68,
+    "date": "2026-06-24T00:00:00",
+    "type": "Expense",
+    "account": "Car and travel",
+    "amount": 500.0,
+    "project_id": "Fuel_Expense",
+    "notes": "petrol"
+  },
+  {
+    "trans_id": 69,
+    "date": "2026-06-27T00:00:00",
+    "type": "Expense",
+    "account": "Car and travel",
+    "amount": 1000.0,
+    "project_id": "Fuel_Expense",
+    "notes": "petrol"
+  },
+  {
+    "trans_id": 70,
+    "date": "2026-07-08T00:00:00",
+    "type": "Expense",
+    "account": "Mobile/Telephone",
+    "amount": 1535.0,
+    "project_id": "Office_Expenses",
+    "notes": "Mobile bill"
+  },
+  {
+    "trans_id": 71,
+    "date": "2026-07-13T00:00:00",
+    "type": "Expense",
+    "account": "Car and travel",
+    "amount": 1568.0,
+    "project_id": "Fuel_Expense",
+    "notes": "petrol"
+  },
+  {
+    "trans_id": 72,
+    "date": "2026-07-14T00:00:00",
+    "type": "Expense",
+    "account": "Misc. (Office Cleaning/electricity bill)",
+    "amount": 170.0,
+    "project_id": "Office_Expenses",
+    "notes": "Chakan MSEB"
+  },
+  {
+    "trans_id": 73,
+    "date": "2026-07-15T00:00:00",
+    "type": "Expense",
+    "account": "Salary",
+    "amount": 8850.0,
+    "project_id": "Wages/Salary",
+    "notes": "salary Rudra"
+  },
+  {
+    "trans_id": 74,
+    "date": "2026-07-16T00:00:00",
+    "type": "Expense",
+    "account": "Misc. (Office Cleaning/electricity bill)",
+    "amount": 430.0,
+    "project_id": "Office_Expenses",
+    "notes": "Nandanvan MSEB"
+  },
+  {
+    "trans_id": 75,
+    "date": "2026-07-16T00:00:00",
+    "type": "Expense",
+    "account": "Misc. (Office Cleaning/electricity bill)",
+    "amount": 1410.0,
+    "project_id": "Office_Expenses",
+    "notes": "Office MSEB"
+  },
+  {
+    "trans_id": 76,
+    "date": "2026-07-20T00:00:00",
+    "type": "Expense",
+    "account": "Petrol & Diesel",
+    "amount": 1448.0,
+    "project_id": "Fuel_Expense",
+    "notes": "petrol"
+  },
+  {
+    "trans_id": 77,
+    "date": "2026-07-21T00:00:00",
+    "type": "Expense",
+    "account": "Mobile/Telephone",
+    "amount": 1296.0,
+    "project_id": "Office_Expenses",
+    "notes": "Office Land Line"
+  },
+  {
+    "trans_id": 78,
+    "date": "2026-07-27T00:00:00",
+    "type": "Expense",
+    "account": "Petrol & Diesel",
+    "amount": 1120.0,
+    "project_id": "Fuel_Expense",
+    "notes": "Petrol"
+  },
+  {
+    "trans_id": 79,
+    "date": "2026-07-29T00:00:00",
+    "type": "Cost",
+    "account": "Ford",
+    "amount": 602.0,
+    "project_id": "FRD_GJ_0002",
+    "notes": "Jalaram Lunch Ford Ahmedabad travel"
+  },
+  {
+    "trans_id": 80,
+    "date": "2026-07-29T00:00:00",
+    "type": "Cost",
+    "account": "Petrol & Diesel",
+    "amount": 4375.0,
+    "project_id": "FRD_GJ_0002",
+    "notes": "Ahmdabad Travel"
+  },
+  {
+    "trans_id": 81,
+    "date": "2026-07-29T00:00:00",
+    "type": "Cost",
+    "account": "Ford",
+    "amount": 6666.0,
+    "project_id": "FRD_GJ_0002",
+    "notes": "Stay in Sanand"
+  },
+  {
+    "trans_id": 82,
+    "date": "2026-07-30T00:00:00",
+    "type": "Cost",
+    "account": "Ford",
+    "amount": 431.0,
+    "project_id": "FRD_GJ_0002",
+    "notes": "Dinner"
+  },
+  {
+    "trans_id": 83,
+    "date": "2026-07-31T00:00:00",
+    "type": "Cost",
+    "account": "Ford",
+    "amount": 418.0,
+    "project_id": "FRD_GJ_0002",
+    "notes": "Breakfast"
+  },
+  {
+    "trans_id": 84,
+    "date": "2026-07-31T00:00:00",
+    "type": "Cost",
+    "account": "Ford",
+    "amount": 2751.0,
+    "project_id": "FRD_GJ_0002",
+    "notes": "Staff Dinner at ahmedabad travel"
+  },
+  {
+    "trans_id": 85,
+    "date": "2026-08-03T00:00:00",
+    "type": "Expense",
+    "account": "Salary",
+    "amount": 75000.0,
+    "project_id": "Wages/Salary",
+    "notes": "Sandeep-July 2026 salary"
+  },
+  {
+    "trans_id": 86,
+    "date": "2026-04-04T00:00:00",
+    "type": "Expense",
+    "account": "Tax Componant /OD interest and charges",
+    "amount": 177.0,
+    "project_id": "BANK Charges",
+    "notes": "Saraswat current account maintainance charges (319)"
+  },
+  {
+    "trans_id": 87,
+    "date": "2026-05-28T00:00:00",
+    "type": "Expense",
+    "account": "Misc. (Office Cleaning/electricity bill)",
+    "amount": 4651.0,
+    "project_id": "Office_Expenses",
+    "notes": "Society maintainance ( April-Septeber 2026)"
+  },
+  {
+    "trans_id": 88,
+    "date": "2026-06-10T00:00:00",
+    "type": "Expense",
+    "account": "Consultancy/ Staff Training",
+    "amount": 10000.0,
+    "project_id": "Training/Consultance Charges",
+    "notes": "Shripad Bhagwa ( PAN# AJUPB1079M) Advance"
+  },
+  {
+    "trans_id": 89,
+    "date": "2026-06-30T00:00:00",
+    "type": "Revenue",
+    "account": "Tax Componant /OD interest and charges",
+    "amount": 3907.0,
+    "project_id": "BANK Charges",
+    "notes": "Saraswat current account interest credited"
+  },
+  {
+    "trans_id": 90,
+    "date": "2026-07-02T00:00:00",
+    "type": "Expense",
+    "account": "Tax Componant /OD interest and charges",
+    "amount": 177.0,
+    "project_id": "BANK Charges",
+    "notes": "account maitainance charges"
+  },
+  {
+    "trans_id": 91,
+    "date": "2026-07-24T00:00:00",
+    "type": "Cost",
+    "account": "Other",
+    "amount": 1357.0,
+    "project_id": "MECH_OTH_0007",
+    "notes": "Inward bank remittance charges ( 1242 USD)"
+  },
+  {
+    "trans_id": 92,
+    "date": "2026-05-05T00:00:00",
+    "type": "Expense",
+    "account": "Tax Componant /OD interest and charges",
+    "amount": 180.0,
+    "project_id": "BANK Charges",
+    "notes": "OD a/c bank maintainace & SMS charges"
+  },
+  {
+    "trans_id": 93,
+    "date": "2026-04-21T00:00:00",
+    "type": "Cost",
+    "account": "RFT_Solar Projects",
+    "amount": 190622.0,
+    "project_id": "Solar_0001",
+    "notes": "Vivek Deshmukh project purchase Inv NE/26-27/0177 ( Nisha Electronics )"
+  },
+  {
+    "trans_id": 94,
+    "date": "2026-04-22T00:00:00",
+    "type": "Cost",
+    "account": "RFT_Solar Projects",
+    "amount": 28965.0,
+    "project_id": "Solar_0001",
+    "notes": "Vivek project Inv NSC/26-27/173 ( Maharashtra sales coperation )"
+  },
+  {
+    "trans_id": 95,
+    "date": "2026-04-27T00:00:00",
+    "type": "Cost",
+    "account": "RFT_Solar Projects",
+    "amount": 21000.0,
+    "project_id": "Solar_0001",
+    "notes": "installation services of solar frame ( Mr Chemate ) inclusive of 5000/ advance on 24th April"
+  },
+  {
+    "trans_id": 96,
+    "date": "2026-04-24T00:00:00",
+    "type": "Cost",
+    "account": "RFT_Solar Projects",
+    "amount": 21000.0,
+    "project_id": "Solar_0001",
+    "notes": "fabrication of solar grid ( Mr Najeem )"
+  },
+  {
+    "trans_id": 97,
+    "date": "2026-04-26T00:00:00",
+    "type": "Cost",
+    "account": "RFT_Solar Projects",
+    "amount": 10000.0,
+    "project_id": "Solar_0001",
+    "notes": "MSEB Net metering charges"
+  },
+  {
+    "trans_id": 98,
+    "date": "2026-04-30T00:00:00",
+    "type": "Cost",
+    "account": "Tax Componant /OD interest and charges",
+    "amount": 591.0,
+    "project_id": "Solar_0001",
+    "notes": "Vivek Deshmukh Solar project OD utilised"
+  },
+  {
+    "trans_id": 99,
+    "date": "2026-05-31T00:00:00",
+    "type": "Cost",
+    "account": "Tax Componant /OD interest and charges",
+    "amount": 213.0,
+    "project_id": "Solar_0001",
+    "notes": "Vivek deshmukh solar project"
+  },
+  {
+    "trans_id": 100,
+    "date": "2026-06-30T00:00:00",
+    "type": "Cost",
+    "account": "Dynics",
+    "amount": 372674.0,
+    "project_id": "GYR-INDO_0001",
+    "notes": "Dynics INV# 66114 ( 3920 USD)"
+  },
+  {
+    "trans_id": 101,
+    "date": "2026-06-30T00:00:00",
+    "type": "Cost",
+    "account": "Goodyear",
+    "amount": 1688.0,
+    "project_id": "GYR-INDO_0001",
+    "notes": "Bank Commission /Swift charges Goodyear PV15 project"
+  },
+  {
+    "trans_id": 102,
+    "date": "2026-06-30T00:00:00",
+    "type": "Cost",
+    "account": "Goodyear",
+    "amount": 97.0,
+    "project_id": "GYR-INDO_0001",
+    "notes": "OD interest"
+  },
+  {
+    "trans_id": 103,
+    "date": "2026-07-02T00:00:00",
+    "type": "Expense",
+    "account": "Tax Componant /OD interest and charges",
+    "amount": 177.0,
+    "project_id": "BANK Charges",
+    "notes": "OD Account maintainace charges"
+  },
+  {
+    "trans_id": 104,
+    "date": "2026-07-10T00:00:00",
+    "type": "Expense",
+    "account": "Consultancy/ Staff Training",
+    "amount": 25000.0,
+    "project_id": "Training/Consultance Charges",
+    "notes": "Shripad Bhagwat consultance charges June26"
+  },
+  {
+    "trans_id": 105,
+    "date": "2026-07-31T00:00:00",
+    "type": "Cost",
+    "account": "Goodyear",
+    "amount": 1756.0,
+    "project_id": "GYR-INDO_0001",
+    "notes": "GYR Indonatia project OD interest charges"
+  },
+  {
+    "trans_id": 106,
+    "date": "2026-08-02T00:00:00",
+    "type": "Expense",
+    "account": "Salary",
+    "amount": 75000.0,
+    "project_id": "Wages/Salary",
+    "notes": "Sandeep B July'26 salary"
+  },
+  {
+    "trans_id": 107,
+    "date": "2026-08-01T00:00:00",
+    "type": "Cost",
+    "account": "Ford",
+    "amount": 5722.0,
+    "project_id": "FRD_GJ_0002",
+    "notes": "Ford Sanand stay ( PAM Inn Regency )"
+  },
+  {
+    "trans_id": 108,
+    "date": "2026-08-03T00:00:00",
+    "type": "Expense",
+    "account": "Petrol & Diesel",
+    "amount": 1000.0,
+    "project_id": "Fuel_Expense",
+    "notes": "Petrol"
+  },
+  {
+    "trans_id": 109,
+    "date": "2026-08-07T00:00:00",
+    "type": "Cost",
+    "account": "Shipping  & Transportation/Special clearance chrg",
+    "amount": 35000.0,
+    "project_id": "AAM-CH_0001",
+    "notes": "Custom SP clerance for AAM ICS defender ( Ramdas Gavte )"
+  },
+  {
+    "trans_id": 110,
+    "date": "2026-08-07T00:00:00",
+    "type": "Expense",
+    "account": "Tea Meal & Water Food",
+    "amount": 120.0,
+    "project_id": "Office_Expenses",
+    "notes": "Smart Food"
+  },
+  {
+    "trans_id": 111,
+    "date": "2026-08-08T00:00:00",
+    "type": "Expense",
+    "account": "Petrol & Diesel",
+    "amount": 1200.0,
+    "project_id": "Fuel_Expense",
+    "notes": "Petrol Expense"
+  },
+  {
+    "trans_id": 112,
+    "date": "2026-08-08T00:00:00",
+    "type": "Expense",
+    "account": "Mobile/Telephone",
+    "amount": 1535.0,
+    "project_id": "Office_Expenses",
+    "notes": "vodafone bill"
+  },
+  {
+    "trans_id": 113,
+    "date": "2026-08-08T00:00:00",
+    "type": "Cost",
+    "account": "AAM",
+    "amount": 9512.0,
+    "project_id": "AAM-CH_0001",
+    "notes": "ICS Defender CHA charges"
+  },
+  {
+    "trans_id": 114,
+    "date": "2026-08-11T00:00:00",
+    "type": "Expense",
+    "account": "Petrol & Diesel",
+    "amount": 250.0,
+    "project_id": "Fuel_Expense",
+    "notes": "petrol"
+  },
+  {
+    "trans_id": 115,
+    "date": "2026-09-07T00:00:00",
+    "type": "Cost",
+    "account": "Shipping  & Transportation/Special clearance chrg",
+    "amount": 51973.0,
+    "project_id": "FRD_GJ_0002",
+    "notes": "Ford CGR11 shipping forcast"
+  },
+  {
+    "trans_id": 116,
+    "date": "2026-09-07T00:00:00",
+    "type": "Cost",
+    "account": "Ford",
+    "amount": 55973.0,
+    "project_id": "FRD_GJ_0002",
+    "notes": "Shipping charges"
+  },
+  {
+    "trans_id": 117,
+    "date": "2026-09-07T00:00:00",
+    "type": "Cost",
+    "account": "Shipping  & Transportation/Special clearance chrg",
+    "amount": 150000.0,
+    "project_id": "FRD_GJ_0002",
+    "notes": "Special clearance charges to customs"
+  },
+  {
+    "trans_id": 118,
+    "date": "2026-09-11T00:00:00",
+    "type": "Cost",
+    "account": "Shipping  & Transportation/Special clearance chrg",
+    "amount": 15000.0,
+    "project_id": "FRD_GJ_0002",
+    "notes": "Domestic shipping to Sanand"
+  },
+  {
+    "trans_id": 119,
+    "date": "2026-09-04T00:00:00",
+    "type": "Cost",
+    "account": "Amara Raja",
+    "amount": 115000.0,
+    "project_id": "OTH_0007",
+    "notes": "Blackbox  payment to vendor"
+  },
+  {
+    "trans_id": 120,
+    "date": "2026-08-10T00:00:00",
+    "type": "Expense",
+    "account": "Consultancy/ Staff Training",
+    "amount": 25000.0,
+    "project_id": "Training/Consultance Charges",
+    "notes": "Shripad Bhagwat consultance charges July'26"
+  }
+]
