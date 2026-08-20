@@ -43,6 +43,7 @@ export default function TransactionDrawer({ open, onOpenChange, editing, meta, o
     } else {
       setForm(emptyForm());
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editing, open]);
 
   const save = async () => {

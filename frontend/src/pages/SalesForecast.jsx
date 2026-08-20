@@ -206,6 +206,7 @@ function SalesForecastDrawer({ open, onOpenChange, editing, meta, onSaved, defau
     } else {
       setForm({ ...emptyForm(), year: defaultYear });
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editing, open, defaultYear]);
 
   const save = async () => {

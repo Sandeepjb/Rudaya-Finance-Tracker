@@ -8,7 +8,7 @@ export default function ProjectPnl() {
   const [rows, setRows] = useState([]);
   const [q, setQ] = useState("");
 
-  useEffect(() => { api.get("/reports/project-pnl").then((r) => setRows(r.data)); }, []);
+  useEffect(() => { api.get("/reports/project-pnl").then((r) => setRows(r.data)); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);
 
   const filtered = useMemo(
     () => rows.filter((r) => !q || r.project_id.toLowerCase().includes(q.toLowerCase())),

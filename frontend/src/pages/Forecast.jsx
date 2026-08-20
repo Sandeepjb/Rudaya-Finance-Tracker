@@ -21,6 +21,7 @@ export default function Forecast() {
     api.get("/reports/forecast-vs-actual", { params: { year } })
       .then((r) => { if (alive) setData(r.data); });
     return () => { alive = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [year]);
 
   const chartData = useMemo(

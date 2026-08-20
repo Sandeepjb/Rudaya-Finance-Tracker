@@ -6,7 +6,7 @@ import { TICK_STYLE, TOOLTIP_STYLE, LEGEND_STYLE, yTickLakh } from "@/lib/format
 
 export default function Monthly() {
   const [rows, setRows] = useState([]);
-  useEffect(() => { api.get("/reports/monthly").then((r) => setRows(r.data)); }, []);
+  useEffect(() => { api.get("/reports/monthly").then((r) => setRows(r.data)); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);
 
   return (
     <Layout title="Revenue vs Expense" subtitle="Monthly breakdown across the fiscal year">

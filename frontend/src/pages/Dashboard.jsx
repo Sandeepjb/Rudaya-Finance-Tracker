@@ -36,6 +36,8 @@ export default function Dashboard() {
       setRecent(t.data.slice(0, 8));
     });
     return () => { alive = false; };
+    // api and setters are stable identities; effect runs once on mount.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   return (

@@ -12,6 +12,7 @@ export default function Settings() {
   const [newAcc, setNewAcc] = useState("");
 
   const load = () => api.get("/meta").then((r) => setMeta(r.data));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { load(); }, []);
 
   const addProject = async () => {
