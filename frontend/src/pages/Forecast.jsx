@@ -7,6 +7,8 @@ import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGri
 import { Target, ArrowRight } from "@phosphor-icons/react";
 import { TICK_STYLE, TOOLTIP_STYLE, LEGEND_STYLE, yTickLakh, yTickPct } from "@/lib/format";
 
+const LINE_DOT = { r: 3 };
+
 const currentYear = new Date().getFullYear();
 const YEARS = [currentYear - 1, currentYear, currentYear + 1, currentYear + 2];
 
@@ -165,7 +167,7 @@ export default function Forecast() {
               <XAxis dataKey="label" stroke="#6B7280" tick={TICK_STYLE} />
               <YAxis stroke="#6B7280" tick={TICK_STYLE} tickFormatter={yTickPct} />
               <Tooltip formatter={yTickPct} contentStyle={TOOLTIP_STYLE} />
-              <Line type="monotone" dataKey="achievement" stroke="#2563EB" strokeWidth={2} dot={{ r: 3 }} name="Achievement %" />
+              <Line type="monotone" dataKey="achievement" stroke="#2563EB" strokeWidth={2} dot={LINE_DOT} name="Achievement %" />
             </LineChart>
           </ResponsiveContainer>
         </div>

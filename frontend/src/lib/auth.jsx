@@ -1,4 +1,4 @@
-import React, { createContext, useCallback, useContext, useEffect, useState } from "react";
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { api } from "@/lib/api";
 
 const AuthCtx = createContext(null);
@@ -30,13 +30,15 @@ export function AuthProvider({ children }) {
   const logout = useCallback(async () => {
     try {
       await api.post("/auth/logout");
-    } catch (error) {
-      console.error("Logout request failed:", error);
+    } catch (_error) {
+      // Cookie may already be gone; treat as best-effort logout.
     }
     setUser(false);
   }, []);
 
-  return <AuthCtx.Provider value={{ user, login, register, logout }}>{children}</AuthCtx.Provider>;
+  const value = useMemo(() => ({ user, login, register, logout }), [user, login, register, logout]);
+
+  return <AuthCtx.Provider value={value}>{children}</AuthCtx.Provider>;
 }
 
 export const useAuth = () => useContext(AuthCtx);

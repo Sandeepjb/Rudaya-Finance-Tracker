@@ -422,50 +422,59 @@ async def delete_forecast(fid: str, user: dict = Depends(get_current_user)):
     return {"ok": True}
 
 
-@api_router.get("/reports/forecast-vs-actual")
-async def forecast_vs_actual(user: dict = Depends(get_current_user), year: Optional[int] = None):
-    """Consolidated: actual Revenue transactions vs summed Sales Forecast line-items per month.
-    Legacy per-month `forecast` docs are added on top if a month has no sales_forecast entries."""
-    year = year or datetime.now(timezone.utc).year
-    # Actual revenue per month
-    docs = await db.transactions.find({"type": "Revenue"}).to_list(20000)
-    actual = {m: 0 for m in range(1, 13)}
-    for d in docs:
-        try:
-            dt = datetime.fromisoformat(d["date"].replace("Z", ""))
-        except Exception:
-            continue
-        if dt.year == year:
-            actual[dt.month] = actual.get(dt.month, 0) + d["amount"]
+def _month_bucket_zero() -> dict:
+    return {m: 0 for m in range(1, 13)}
 
-    # Consolidated forecast from sales_forecast line items
-    forecast = {m: 0 for m in range(1, 13)}
-    line_counts = {m: 0 for m in range(1, 13)}
+
+def _parse_iso(dt_str: str):
+    try:
+        return datetime.fromisoformat(dt_str.replace("Z", ""))
+    except Exception:
+        return None
+
+
+async def _actual_revenue_by_month(year: int) -> dict:
+    docs = await db.transactions.find({"type": "Revenue"}).to_list(20000)
+    actual = _month_bucket_zero()
+    for d in docs:
+        dt = _parse_iso(d["date"])
+        if dt and dt.year == year:
+            actual[dt.month] += d["amount"]
+    return actual
+
+
+async def _forecast_by_month(year: int) -> tuple:
+    """Return (forecast_totals, line_counts). Sales forecast sums override legacy forecast docs."""
+    forecast = _month_bucket_zero()
+    line_counts = _month_bucket_zero()
     async for sf in db.sales_forecast.find({"year": year}):
         m = sf["month"]
         if 1 <= m <= 12:
             forecast[m] += sf.get("amount", 0)
             line_counts[m] += 1
-
-    # Backfill with legacy `forecast` docs only where sales_forecast has no entries
     legacy = await db.forecast.find({"year": year}).to_list(500)
     for f in legacy:
         m = f["month"]
         if 1 <= m <= 12 and line_counts[m] == 0:
             forecast[m] = f.get("amount", 0)
+    return forecast, line_counts
 
-    rows = []
-    for m in range(1, 13):
-        rev = actual[m]
-        fc = forecast[m]
-        rows.append({
-            "year": year, "month": m,
-            "label": datetime(year, m, 1).strftime("%b"),
-            "forecast": fc, "actual": rev,
-            "variance": rev - fc,
-            "achievement_pct": (rev / fc * 100) if fc else None,
-            "line_items": line_counts[m],
-        })
+
+@api_router.get("/reports/forecast-vs-actual")
+async def forecast_vs_actual(user: dict = Depends(get_current_user), year: Optional[int] = None):
+    """Consolidated: actual Revenue transactions vs summed Sales Forecast line-items per month.
+    Legacy per-month `forecast` docs are used as fallback for months without sales_forecast entries."""
+    year = year or datetime.now(timezone.utc).year
+    actual = await _actual_revenue_by_month(year)
+    forecast, line_counts = await _forecast_by_month(year)
+    rows = [{
+        "year": year, "month": m,
+        "label": datetime(year, m, 1).strftime("%b"),
+        "forecast": forecast[m], "actual": actual[m],
+        "variance": actual[m] - forecast[m],
+        "achievement_pct": (actual[m] / forecast[m] * 100) if forecast[m] else None,
+        "line_items": line_counts[m],
+    } for m in range(1, 13)]
     return {"year": year, "rows": rows,
             "total_forecast": sum(forecast.values()),
             "total_actual": sum(actual.values())}
@@ -492,8 +501,7 @@ async def project_pnl(user: dict = Depends(get_current_user)):
 
 
 # --- Seeding ---
-async def seed_all():
-    # Users
+async def _seed_admin_user() -> str:
     admin_email = os.environ["ADMIN_EMAIL"].lower().strip()
     admin_password = os.environ["ADMIN_PASSWORD"]
     existing = await db.users.find_one({"email": admin_email})
@@ -506,41 +514,47 @@ async def seed_all():
     elif not verify_password(admin_password, existing["password_hash"]):
         await db.users.update_one({"email": admin_email},
                                   {"$set": {"password_hash": hash_password(admin_password)}})
+    return admin_email
 
-    # Meta (projects / accounts / project_ids)
+
+async def _seed_meta():
     meta_path = ROOT_DIR / "seed_meta.json"
-    if meta_path.exists() and await db.projects.count_documents({}) == 0:
-        meta = json.loads(meta_path.read_text())
-        if meta.get("projects"):
-            await db.projects.insert_many(meta["projects"])
-    if meta_path.exists() and await db.accounts.count_documents({}) == 0:
-        meta = json.loads(meta_path.read_text())
-        if meta.get("accounts"):
-            await db.accounts.insert_many([{"name": a} for a in meta["accounts"]])
-    if meta_path.exists() and await db.project_ids.count_documents({}) == 0:
-        meta = json.loads(meta_path.read_text())
-        if meta.get("project_ids"):
-            await db.project_ids.insert_many([{"code": p, "description": ""} for p in meta["project_ids"]])
+    if not meta_path.exists():
+        return
+    meta = json.loads(meta_path.read_text())
+    if meta.get("projects") and await db.projects.count_documents({}) == 0:
+        await db.projects.insert_many(meta["projects"])
+    if meta.get("accounts") and await db.accounts.count_documents({}) == 0:
+        await db.accounts.insert_many([{"name": a} for a in meta["accounts"]])
+    if meta.get("project_ids") and await db.project_ids.count_documents({}) == 0:
+        await db.project_ids.insert_many([{"code": p, "description": ""} for p in meta["project_ids"]])
 
-    # Transactions
+
+async def _seed_transactions(admin_email: str):
     txn_path = ROOT_DIR / "seed_transactions.json"
-    if txn_path.exists() and await db.transactions.count_documents({}) == 0:
-        txns = json.loads(txn_path.read_text())
-        docs = []
-        for t in txns:
-            docs.append({
-                "date": t["date"] or datetime.now(timezone.utc).isoformat(),
-                "type": t["type"],
-                "account": t["account"],
-                "amount": t["amount"],
-                "project_id": t["project_id"],
-                "notes": t.get("notes", ""),
-                "created_at": datetime.now(timezone.utc).isoformat(),
-                "created_by": admin_email,
-                "source": "excel_import",
-            })
-        if docs:
-            await db.transactions.insert_many(docs)
+    if not txn_path.exists() or await db.transactions.count_documents({}) > 0:
+        return
+    txns = json.loads(txn_path.read_text())
+    now = datetime.now(timezone.utc).isoformat()
+    docs = [{
+        "date": t["date"] or now,
+        "type": t["type"],
+        "account": t["account"],
+        "amount": t["amount"],
+        "project_id": t["project_id"],
+        "notes": t.get("notes", ""),
+        "created_at": now,
+        "created_by": admin_email,
+        "source": "excel_import",
+    } for t in txns]
+    if docs:
+        await db.transactions.insert_many(docs)
+
+
+async def seed_all():
+    admin_email = await _seed_admin_user()
+    await _seed_meta()
+    await _seed_transactions(admin_email)
 
 
 @app.on_event("startup")

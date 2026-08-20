@@ -6,6 +6,8 @@ import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGri
 import { TypeBadge } from "@/components/TypeBadge";
 import { typeColor, TICK_STYLE, TOOLTIP_STYLE, LEGEND_STYLE, yTickLakh } from "@/lib/format";
 
+const LINE_DOT = { r: 3 };
+
 const Kpi = ({ label, value, color, icon: Icon, testid }) => (
   <div className="rudaya-card p-5" data-testid={testid}>
     <div className="flex items-start justify-between">
@@ -80,7 +82,7 @@ export default function Dashboard() {
                 <XAxis dataKey="label" stroke="#6B7280" tick={TICK_STYLE} />
                 <YAxis stroke="#6B7280" tick={TICK_STYLE} tickFormatter={yTickLakh} />
                 <Tooltip formatter={(v) => inr(v)} contentStyle={TOOLTIP_STYLE} />
-                <Line type="monotone" dataKey="net_profit" stroke="#2563EB" strokeWidth={2} dot={{ r: 3 }} />
+                <Line type="monotone" dataKey="net_profit" stroke="#2563EB" strokeWidth={2} dot={LINE_DOT} />
               </LineChart>
             </ResponsiveContainer>
           </div>
