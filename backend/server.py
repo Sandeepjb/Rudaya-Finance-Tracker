@@ -689,7 +689,20 @@ AI_SYSTEM_PROMPT = (
     "project-wise P&L, and quotations). All amounts are Indian Rupees; format as ₹ with Indian grouping "
     "(e.g. ₹12,34,567) and use L/Cr shorthand (₹5.5L, ₹1.2Cr) when helpful. "
     "Be direct — give the answer first, then a short explanation. Use bullet points when listing. "
-    "If the user asks a question the data doesn't cover, say so plainly. Never invent numbers."
+    "If the user asks a question the data doesn't cover, say so plainly. Never invent numbers.\n\n"
+    "WRITE ACCESS (approval-gated): When the user asks you to RECORD, ADD, CREATE, LOG, ENTER or "
+    "SAVE something (a transaction, a quotation, or a sales forecast entry), you must NOT claim it "
+    "was saved. Instead, output ONE confirmation sentence for the human, and then a machine-parseable "
+    "block on its own line in EXACTLY this format:\n"
+    "<propose>{\"kind\": \"transaction\"|\"quotation\"|\"sales_forecast\", \"data\": { ... }}</propose>\n"
+    "You may emit multiple <propose> blocks in one reply. All proposals go to a pending queue and the "
+    "user approves them explicitly. Never fabricate ids, dates or amounts. If a required field is "
+    "missing, ask the user for it instead of proposing.\n\n"
+    "Schemas:\n"
+    " • transaction: {date:'YYYY-MM-DD', type:'Revenue'|'Cost'|'Expense', account:str, amount:number, project_id:str, notes:str}\n"
+    " • sales_forecast: {year:int, month:int(1-12), type:'Revenue'|'Cost'|'Expense', project_id:str(optional), amount:number, notes:str}\n"
+    " • quotation: {quotation_number:str, client_name:str, project_id:str, quote_date:'YYYY-MM-DD', expected_year:int, expected_month:int(1-12), status:'draft'|'sent'|'won'|'lost', notes:str, lines:[{type:'Revenue'|'Cost'|'Expense', description:str, amount:number}]}\n"
+    "After each <propose> also add a one-line human summary starting with '↳' so the user sees what was queued.\n"
 )
 
 
@@ -794,12 +807,14 @@ async def ai_chat(payload: AiChatIn, user: dict = Depends(get_current_user)):
                 elif isinstance(ev, StreamDone):
                     break
             full = "".join(collected)
+            proposals = await _extract_and_store_proposals(full, user["email"], session_id)
             await db.ai_messages.insert_one({
                 "session_id": session_id, "role": "assistant", "content": full,
                 "user_email": user["email"],
                 "created_at": datetime.now(timezone.utc).isoformat(),
+                "proposals": proposals,
             })
-            yield f"data: {json.dumps({'done': True, 'session_id': session_id})}\n\n"
+            yield f"data: {json.dumps({'done': True, 'session_id': session_id, 'proposals': proposals})}\n\n"
         except Exception as e:
             yield f"data: {json.dumps({'error': str(e)})}\n\n"
 
@@ -818,6 +833,114 @@ async def ai_history(user: dict = Depends(get_current_user), session_id: Optiona
     docs = await db.ai_messages.find(q).sort("created_at", 1).to_list(limit)
     return [{"id": str(d["_id"]), "role": d["role"], "content": d["content"],
              "session_id": d["session_id"], "created_at": d["created_at"]} for d in docs]
+
+
+import re as _re
+
+_PROPOSE_RE = _re.compile(r"<propose>\s*(\{.*?\})\s*</propose>", _re.DOTALL)
+
+ALLOWED_KINDS = {"transaction", "sales_forecast", "quotation"}
+
+
+async def _extract_and_store_proposals(full_text: str, user_email: str, session_id: str) -> list:
+    proposals = []
+    for m in _PROPOSE_RE.finditer(full_text or ""):
+        try:
+            obj = json.loads(m.group(1))
+        except Exception:
+            continue
+        kind = obj.get("kind")
+        data = obj.get("data")
+        if kind not in ALLOWED_KINDS or not isinstance(data, dict):
+            continue
+        doc = {
+            "kind": kind, "data": data, "status": "pending",
+            "session_id": session_id, "created_by": user_email,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        }
+        r = await db.ai_pending_actions.insert_one(doc)
+        proposals.append({"id": str(r.inserted_id), "kind": kind, "data": data, "status": "pending"})
+    return proposals
+
+
+@api_router.get("/ai/pending")
+async def list_pending(user: dict = Depends(get_current_user), status: Optional[str] = "pending"):
+    q = {"created_by": user["email"]}
+    if status and status != "all":
+        q["status"] = status
+    docs = await db.ai_pending_actions.find(q).sort("created_at", -1).to_list(100)
+    return [{"id": str(d["_id"]), "kind": d["kind"], "data": d["data"],
+             "status": d["status"], "created_at": d["created_at"],
+             "session_id": d.get("session_id", "")} for d in docs]
+
+
+async def _apply_pending(doc: dict, user: dict) -> dict:
+    kind, data = doc["kind"], doc["data"]
+    if kind == "transaction":
+        payload = TransactionIn(**data).model_dump()
+        payload["created_at"] = datetime.now(timezone.utc).isoformat()
+        payload["created_by"] = user["email"]
+        payload["source"] = "ai_approved"
+        r = await db.transactions.insert_one(payload)
+        return {"kind": "transaction", "id": str(r.inserted_id)}
+    if kind == "sales_forecast":
+        payload = SalesForecastIn(**data).model_dump()
+        if payload["month"] < 1 or payload["month"] > 12:
+            raise HTTPException(400, "month must be 1..12")
+        payload["created_at"] = datetime.now(timezone.utc).isoformat()
+        payload["updated_at"] = payload["created_at"]
+        payload["created_by"] = user["email"]
+        r = await db.sales_forecast.insert_one(payload)
+        return {"kind": "sales_forecast", "id": str(r.inserted_id)}
+    if kind == "quotation":
+        payload = QuotationIn(**data).model_dump()
+        payload["created_at"] = datetime.now(timezone.utc).isoformat()
+        payload["updated_at"] = payload["created_at"]
+        payload["created_by"] = user["email"]
+        try:
+            r = await db.quotations.insert_one(payload)
+        except DuplicateKeyError:
+            raise HTTPException(409, f"quotation_number '{payload.get('quotation_number')}' already exists")
+        return {"kind": "quotation", "id": str(r.inserted_id)}
+    raise HTTPException(400, f"unsupported kind {kind}")
+
+
+@api_router.post("/ai/pending/{pid}/approve")
+async def approve_pending(pid: str, user: dict = Depends(get_current_user)):
+    try:
+        oid = ObjectId(pid)
+    except Exception:
+        raise HTTPException(400, "Invalid id")
+    doc = await db.ai_pending_actions.find_one({"_id": oid, "created_by": user["email"]})
+    if not doc:
+        raise HTTPException(404, "Not found")
+    if doc["status"] != "pending":
+        raise HTTPException(400, f"Already {doc['status']}")
+    result = await _apply_pending(doc, user)
+    await db.ai_pending_actions.update_one(
+        {"_id": oid},
+        {"$set": {"status": "approved",
+                  "approved_at": datetime.now(timezone.utc).isoformat(),
+                  "approved_by": user["email"],
+                  "applied_ref": result}}
+    )
+    return {"ok": True, "applied": result}
+
+
+@api_router.post("/ai/pending/{pid}/reject")
+async def reject_pending(pid: str, user: dict = Depends(get_current_user)):
+    try:
+        oid = ObjectId(pid)
+    except Exception:
+        raise HTTPException(400, "Invalid id")
+    r = await db.ai_pending_actions.update_one(
+        {"_id": oid, "created_by": user["email"], "status": "pending"},
+        {"$set": {"status": "rejected",
+                  "rejected_at": datetime.now(timezone.utc).isoformat()}}
+    )
+    if r.matched_count == 0:
+        raise HTTPException(404, "Not found or already handled")
+    return {"ok": True}
 
 
 # --- Seeding ---
