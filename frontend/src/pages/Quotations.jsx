@@ -29,7 +29,8 @@ const STATUS_STYLE = {
   lost: "bg-red-50 text-red-700 border-red-300",
 };
 
-const emptyLine = () => ({ type: "Revenue", description: "", amount: "", notes: "" });
+const lineId = () => `ln-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+const emptyLine = () => ({ _key: lineId(), type: "Revenue", description: "", amount: "", notes: "" });
 const emptyForm = () => ({
   quotation_number: "",
   client_name: "",
@@ -198,7 +199,7 @@ function QuotationDrawer({ open, onOpenChange, editing, meta, onSaved, defaultYe
         expected_month: editing.expected_month || new Date().getMonth() + 1,
         status: editing.status || "draft",
         notes: editing.notes || "",
-        lines: (editing.lines && editing.lines.length) ? editing.lines.map((l) => ({ ...l })) : [emptyLine()],
+        lines: (editing.lines && editing.lines.length) ? editing.lines.map((l) => ({ ...l, _key: l._key || lineId() })) : [emptyLine()],
       });
     } else {
       setForm({ ...emptyForm(), expected_year: defaultYear });
@@ -226,8 +227,7 @@ function QuotationDrawer({ open, onOpenChange, editing, meta, onSaved, defaultYe
             description: l.description || "",
             amount: parseFloat(l.amount),
             notes: l.notes || "",
-          })),
-      };
+          })),      };
       if (editing) await api.put(`/quotations/${editing.id}`, payload);
       else await api.post("/quotations", payload);
       toast.success(editing ? "Quotation updated" : "Quotation created");
@@ -319,7 +319,7 @@ function QuotationDrawer({ open, onOpenChange, editing, meta, onSaved, defaultYe
                 </thead>
                 <tbody>
                   {form.lines.map((l, idx) => (
-                    <tr key={idx} className="border-b border-neutral-100" data-testid={`q-line-${idx}`}>
+                    <tr key={l._key || `idx-${idx}`} className="border-b border-neutral-100" data-testid={`q-line-${idx}`}>
                       <td className="p-1.5">
                         <Select value={l.type} onValueChange={(v) => updateLine(idx, { type: v })}>
                           <SelectTrigger data-testid={`q-line-type-${idx}`} className="rounded-none h-8 text-xs"><SelectValue /></SelectTrigger>

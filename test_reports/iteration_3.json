@@ -1,0 +1,49 @@
+{
+  "summary": "Regression sweep after style-only changes (AiAssistant message ids, Quotations line _key, typed forecast tests). Backend: full pytest suite 36/38 pass — the only 2 failures are the known/expected ones. Added /app/backend/tests/test_regress_schema_ai.py (5 tests) validating the TYPED forecast-vs-actual schema, quotation->forecast contribution (create/edit/lost/delete), and the /api/ai/chat SSE stream. Frontend Playwright: cookie-only login OK (localStorage empty), quotation drawer create/edit/delete OK, line-item key stability verified (mid-list remove/add keeps correct values), AI drawer streams a correct answer from Claude Sonnet 4.6. One new backend bug found: duplicate quotation_number returns 500 instead of 409.",
+  "backend_issues": {
+    "critical": [
+      {"endpoint": "POST /api/quotations", "issue": "Duplicate quotation_number hits the unique Mongo index and raises pymongo DuplicateKeyError -> unhandled 500 'Internal Server Error'. Should be caught and returned as 409/400 with a clear message. Same risk on PUT /api/quotations/{id} when renaming to an existing number. Reproduced by test_duplicate_quotation_number_not_500.", "priority": "HIGH"}
+    ],
+    "minor": [
+      {"endpoint": "POST /api/auth/login", "issue": "KNOWN/EXPECTED: no brute-force lockout — 6 wrong passwords all return 401 (test_brute_force_lockout fails). Out of scope per main agent."},
+      {"endpoint": "GET /api/reports/forecast-vs-actual", "issue": "KNOWN/EXPECTED: stale seed assertion — test_sales_forecast.py::TestForecastVsActual::test_consolidation_from_sales_forecast asserts total_actual.Revenue == 4,621,778 but live DB is 4,622,776.74 (QA data drift). NOTE: the drifted assertion now lives in test_sales_forecast.py, not backend_test.py::TestReports::test_summary_totals (that one passes). Update the expected value or compute it from /api/transactions."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "AiAssistant message bubble", "issue": "Assistant reply is rendered as raw text, so markdown emphasis shows literally: '**Total actual revenue: Rs 46,21,777.74 (~Rs 46.2L)**'. Render markdown (or strip ** ) in the bubble.", "selector": "[data-testid=\"ai-messages\"]", "priority": "MEDIUM"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Quotation drawer line items", "issues": ["After clicking a line's remove button, focus falls back to the drawer container (document.activeElement = q-drawer) instead of an adjacent input. Values are correctly preserved by the new _key, but keyboard users lose their place — consider focusing the next row's description input after removal."]},
+      {"screen": "Quotations / Dashboard date inputs + charts", "issues": ["Pre-existing from iteration_2 and still present: q-date uses the native browser date picker (type=date) instead of the shadcn Calendar; Recharts still logs repeated 'width(-1) and height(-1)' warnings on mount."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_regress_schema_ai.py",
+    "/app/backend/tests/backend_test.py",
+    "/app/backend/tests/test_sales_forecast.py",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "action_items": [
+    "Wrap quotation insert/update in try/except pymongo.errors.DuplicateKeyError and return HTTP 409 'quotation_number already exists' (currently 500).",
+    "Fix the stale expected total in test_sales_forecast.py::test_consolidation_from_sales_forecast (4,621,778 -> derive dynamically) OR restore the seed; it is the only remaining data-drift failure.",
+    "Render markdown in the AI assistant bubble (currently shows literal ** ).",
+    "Optional: restore focus to a sibling line input after removing a quotation line."
+  ],
+  "critical_code_review_comments": [
+    "server.py create_quotation/update_quotation: no duplicate-key handling despite a unique index on quotation_number — only 500-producing path found in this sweep.",
+    "_q_totals mutates a dict keyed by ln['type'] with t.get(typ, 0) — an unknown type string from the payload silently creates a new bucket and skews net; validate type against Revenue/Cost/Expense in QuotationLineIn (Literal or validator).",
+    "Quotations.jsx line 322 still keeps the `|| `idx-${idx}`` fallback for key — harmless, but since emptyLine() always sets _key it is dead code except for rows loaded from the API; make the mapping in the edit path guarantee _key so the fallback can be dropped.",
+    "server.py is 896 lines — approaching the point where routers (auth/transactions/quotations/reports/ai) should be split into modules.",
+    "achievement_pct returns None when forecast is 0 — frontend must guard; verified schema-wise but worth an explicit 0/null contract note."
+  ],
+  "updated_files": ["/app/backend/tests/test_regress_schema_ai.py"],
+  "success_rate": {"backend": "95% (36/38 known-suite; new suite 4/5 — 1 real bug)", "frontend": "100% of regression scenarios (1 cosmetic markdown issue)"},
+  "seed_data_creation": "Created and deleted TEST_QA_* quotations (backend + UI TEST_QA_UI_1). Verified 0 leftovers; quotations collection back to 1 seeded doc (Q-2026-DEMO-01). 10 rows now in ai_messages from the AI stream tests (harmless chat history).",
+  "should_call_test_agent_after_fix": false,
+  "should_main_agent_self_test": true,
+  "test_credentials": "sandeepjb2014@gmail.com / Rudaya@2026 — valid, cookie auth works, localStorage stays empty",
+  "context_for_next_testing_agent": "Contracts to remember: POST/PUT /api/quotations body uses quotation_number/client_name/lines (NOT quote_number/customer/line_items). POST /api/ai/chat body is {message, session_id?, year?} and streams SSE 'data: {\"delta\":...}' then {\"done\":true}. In forecast-vs-actual rows, line_items[type] is an INT COUNT, not a list. After login the app lands on '/' (not '/dashboard') — do not wait_for_url('**/dashboard**'). Quotation delete uses a window.confirm, so register page.on('dialog', accept) first. New regression file: /app/backend/tests/test_regress_schema_ai.py.",
+  "rca_of_the_issue": "No regressions from the style-only changes. Verified the stable-key refactor behaviourally: with 3 lines (A/B/C) filled, removing row 0 leaves desc0='Line B', desc1='Line C', amt0='2000' and adding a line afterwards leaves existing rows untouched — i.e. no stale-value bleed that index keys would cause. AI SSE verified twice: backend stream returns text/event-stream with json deltas in ~5s, and the drawer renders the answer. The only genuine defect surfaced is unhandled DuplicateKeyError on quotation_number (unique index created in startup), which turns a user retyping an existing quote number into a 500."
+}

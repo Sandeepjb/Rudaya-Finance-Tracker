@@ -12,6 +12,7 @@ import jwt
 from datetime import datetime, timezone, timedelta
 from typing import List, Optional
 from bson import ObjectId
+from pymongo.errors import DuplicateKeyError
 
 from fastapi import FastAPI, APIRouter, HTTPException, Depends, Request, Response, Query
 from fastapi.responses import StreamingResponse
@@ -389,10 +390,20 @@ async def delete_sales_forecast(fid: str, user: dict = Depends(get_current_user)
 
 # --- Quotations ---
 class QuotationLineIn(BaseModel):
-    type: str  # Revenue / Cost / Expense
+    type: str  # Revenue / Cost / Expense — validated below
     description: str = ""
     amount: float
     notes: str = ""
+
+    @classmethod
+    def __get_validators__(cls):
+        yield from super().__get_validators__()
+
+    def __init__(self, **data):
+        t = data.get("type")
+        if t not in ("Revenue", "Cost", "Expense"):
+            raise ValueError(f"type must be Revenue/Cost/Expense, got {t!r}")
+        super().__init__(**data)
 
 
 class QuotationIn(BaseModel):
@@ -472,7 +483,10 @@ async def create_quotation(payload: QuotationIn, user: dict = Depends(get_curren
     doc["created_at"] = datetime.now(timezone.utc).isoformat()
     doc["updated_at"] = doc["created_at"]
     doc["created_by"] = user["email"]
-    result = await db.quotations.insert_one(doc)
+    try:
+        result = await db.quotations.insert_one(doc)
+    except DuplicateKeyError:
+        raise HTTPException(409, f"quotation_number '{payload.quotation_number}' already exists")
     doc["_id"] = result.inserted_id
     return _q_out(doc)
 
@@ -488,7 +502,10 @@ async def update_quotation(qid: str, payload: QuotationIn, user: dict = Depends(
     update = {**payload.model_dump(),
               "updated_at": datetime.now(timezone.utc).isoformat(),
               "updated_by": user["email"]}
-    r = await db.quotations.update_one({"_id": oid}, {"$set": update})
+    try:
+        r = await db.quotations.update_one({"_id": oid}, {"$set": update})
+    except DuplicateKeyError:
+        raise HTTPException(409, f"quotation_number '{payload.quotation_number}' already exists")
     if r.matched_count == 0:
         raise HTTPException(404, "Not found")
     doc = await db.quotations.find_one({"_id": oid})

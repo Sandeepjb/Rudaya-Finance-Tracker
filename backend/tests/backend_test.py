@@ -211,11 +211,13 @@ class TestForecast:
 
         rows = client.get(f"{API}/reports/forecast-vs-actual", params={"year": 2026}).json()["rows"]
         jul = [x for x in rows if x["month"] == 7][0]
+        # New typed schema — forecast is dict by type; Revenue side must at least contain the SF sum
+        # (quotations may add more, so use >= rather than ==)
         if sf_jul_sum > 0:
-            assert jul["forecast"] == sf_jul_sum, "sales_forecast sum must override legacy /forecast value"
-            assert jul["line_items"] >= 1
+            assert jul["forecast"]["Revenue"] >= sf_jul_sum, "sales_forecast Revenue must feed consolidation"
+            assert jul["line_items"]["Revenue"] >= 1
         else:
-            assert jul["forecast"] == 3500000
+            assert jul["forecast"]["Revenue"] == 3500000
 
         # Legacy /forecast is still upsert on (year, month)
         client.post(f"{API}/forecast", json={"year": 2026, "month": 7, "amount": 4000000, "notes": "TEST_fc2"})

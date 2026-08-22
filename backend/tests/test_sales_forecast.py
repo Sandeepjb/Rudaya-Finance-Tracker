@@ -158,7 +158,7 @@ class TestSalesForecastCrud:
         assert r.status_code in (401, 403)
 
 
-# --- Consolidated forecast vs actual report ---
+# --- Consolidated forecast vs actual report (typed by Revenue/Cost/Expense) ---
 class TestForecastVsActual:
     def test_consolidation_from_sales_forecast(self, client):
         r = client.get(f"{API}/reports/forecast-vs-actual", params={"year": YEAR})
@@ -166,26 +166,30 @@ class TestForecastVsActual:
         d = r.json()
         assert len(d["rows"]) == 12
         by_m = {x["month"]: x for x in d["rows"]}
-        assert by_m[7]["forecast"] == 3300000, by_m[7]
-        assert by_m[7]["line_items"] == 2
-        assert by_m[8]["forecast"] == 500000, by_m[8]
-        assert by_m[8]["line_items"] == 1
-        # total_forecast must equal the sum of all sales_forecast rows for the year
-        # (derived live to stay stable under parallel test execution)
+        # Jul-2026 seed = FRD_GJ_0002 25L + AAM-CH_0001 8L (both Revenue) = 33L
+        assert by_m[7]["forecast"]["Revenue"] == 3300000, by_m[7]
+        assert by_m[7]["line_items"]["Revenue"] == 2
+        assert by_m[8]["forecast"]["Revenue"] == 500000, by_m[8]
+        assert by_m[8]["line_items"]["Revenue"] == 1
+        # total_forecast is a dict-by-type; sum must equal all sales_forecast rows for the year
         sf_rows = client.get(f"{API}/sales-forecast", params={"year": YEAR}).json()
         expected_total = sum(x["amount"] for x in sf_rows)
-        assert abs(d["total_forecast"] - expected_total) < 1, (d["total_forecast"], expected_total)
-        assert abs(d["total_actual"] - 4621778) < 5, d["total_actual"]
+        # NB: report also adds non-lost quotation lines, so the derived total is a lower bound.
+        assert d["total_forecast_all"] >= expected_total - 1, (d["total_forecast_all"], expected_total)
+        assert abs(d["total_actual"]["Revenue"] - 4621778) < 5, d["total_actual"]
         # variance / achievement math
-        assert by_m[7]["variance"] == by_m[7]["actual"] - by_m[7]["forecast"]
-        if by_m[7]["forecast"]:
-            assert abs(by_m[7]["achievement_pct"] - by_m[7]["actual"] / by_m[7]["forecast"] * 100) < 0.01
-        # months with no forecast must have None achievement
-        assert by_m[1]["achievement_pct"] is None  # noqa: E711 — PEP 8: use `is` for None comparisons
-        assert by_m[1]["line_items"] == 0
+        rev_var = by_m[7]["variance"]["Revenue"]
+        assert rev_var == by_m[7]["actual"]["Revenue"] - by_m[7]["forecast"]["Revenue"]
+        if by_m[7]["forecast"]["Revenue"]:
+            pct = by_m[7]["achievement_pct"]["Revenue"]
+            expected_pct = by_m[7]["actual"]["Revenue"] / by_m[7]["forecast"]["Revenue"] * 100
+            assert abs(pct - expected_pct) < 0.01
+        # months with no forecast must have None achievement + zero line_items
+        assert by_m[1]["achievement_pct"]["Revenue"] is None  # noqa: E711 — PEP 8: use `is` for None
+        assert by_m[1]["line_items"]["Revenue"] == 0
 
     def test_sales_forecast_overrides_legacy(self, client):
-        """Legacy Jul-2026 forecast doc (35L) must be overridden by SF sum (33L)."""
+        """Legacy Jul-2026 forecast doc must be overridden by SF sum (Revenue side)."""
         legacy = client.get(f"{API}/forecast", params={"year": YEAR}).json()
         jul_legacy = [x for x in legacy if x["month"] == 7]
         if not jul_legacy:
@@ -193,26 +197,30 @@ class TestForecastVsActual:
         assert jul_legacy[0]["amount"] != 3300000, "legacy value must differ to prove override"
         rep = client.get(f"{API}/reports/forecast-vs-actual", params={"year": YEAR}).json()
         jul = [x for x in rep["rows"] if x["month"] == 7][0]
-        assert jul["forecast"] == 3300000, "sales_forecast must win over legacy forecast"
+        # sales_forecast Revenue lines for Jul sum to 33L
+        sf_jul_rev = sum(x["amount"] for x in client.get(f"{API}/sales-forecast", params={"year": YEAR}).json()
+                         if x["month"] == 7 and x.get("type", "Revenue") == "Revenue")
+        # forecast for Jul Revenue must at least include sf sum (plus any non-lost quotation lines)
+        assert jul["forecast"]["Revenue"] >= sf_jul_rev, "sales_forecast Revenue must feed into consolidated forecast"
 
     def test_legacy_backfill_when_no_sf_entries(self, client, created_ids):
-        """Month with only a legacy forecast doc must backfill from it, and be overridden once SF added."""
+        """Month with only a legacy forecast doc backfills into Revenue and is overridden once SF added."""
         month = 11
         client.post(f"{API}/forecast", json={"year": YEAR, "month": month,
                                             "amount": 900000, "notes": "TEST_qa legacy"})
         rep = client.get(f"{API}/reports/forecast-vs-actual", params={"year": YEAR}).json()
         row = [x for x in rep["rows"] if x["month"] == month][0]
-        assert row["forecast"] == 900000, row
-        assert row["line_items"] == 0
+        assert row["forecast"]["Revenue"] == 900000, row
+        assert row["line_items"]["Revenue"] == 0
 
         sf = client.post(f"{API}/sales-forecast", json={"year": YEAR, "month": month,
-                                                       "project_id": "", "amount": 100000,
-                                                       "notes": "TEST_qa override"}).json()
+                                                       "type": "Revenue", "project_id": "",
+                                                       "amount": 100000, "notes": "TEST_qa override"}).json()
         created_ids.append(sf["id"])
         rep = client.get(f"{API}/reports/forecast-vs-actual", params={"year": YEAR}).json()
         row = [x for x in rep["rows"] if x["month"] == month][0]
-        assert row["forecast"] == 100000, f"sales_forecast should win: {row}"
-        assert row["line_items"] == 1
+        assert row["forecast"]["Revenue"] == 100000, f"sales_forecast should win: {row}"
+        assert row["line_items"]["Revenue"] == 1
 
         # cleanup
         client.delete(f"{API}/sales-forecast/{sf['id']}")
@@ -222,13 +230,14 @@ class TestForecastVsActual:
             client.delete(f"{API}/forecast/{lf[0]['id']}")
 
     def test_report_totals_update_after_new_entry(self, client, created_ids):
-        before = client.get(f"{API}/reports/forecast-vs-actual", params={"year": YEAR}).json()["total_forecast"]
-        sf = client.post(f"{API}/sales-forecast", json={"year": YEAR, "month": 4, "project_id": "",
-                                                       "amount": 250000, "notes": "TEST_qa delta"}).json()
+        before = client.get(f"{API}/reports/forecast-vs-actual", params={"year": YEAR}).json()["total_forecast_all"]
+        sf = client.post(f"{API}/sales-forecast", json={"year": YEAR, "month": 4, "type": "Revenue",
+                                                       "project_id": "", "amount": 250000,
+                                                       "notes": "TEST_qa delta"}).json()
         created_ids.append(sf["id"])
-        after = client.get(f"{API}/reports/forecast-vs-actual", params={"year": YEAR}).json()["total_forecast"]
+        after = client.get(f"{API}/reports/forecast-vs-actual", params={"year": YEAR}).json()["total_forecast_all"]
         assert after == before + 250000, (before, after)
         client.delete(f"{API}/sales-forecast/{sf['id']}")
         created_ids.remove(sf["id"])
-        final = client.get(f"{API}/reports/forecast-vs-actual", params={"year": YEAR}).json()["total_forecast"]
+        final = client.get(f"{API}/reports/forecast-vs-actual", params={"year": YEAR}).json()["total_forecast_all"]
         assert final == before

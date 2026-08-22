@@ -13,6 +13,25 @@ const SUGGESTIONS = [
   "Summarise open quotations by client.",
 ];
 
+// Minimal inline markdown: **bold**, *italic*, `code`. Splits into React nodes.
+function renderInline(text) {
+  const parts = [];
+  const re = /(\*\*[^*]+\*\*|\*[^*]+\*|`[^`]+`)/g;
+  let last = 0;
+  let m;
+  let i = 0;
+  while ((m = re.exec(text)) !== null) {
+    if (m.index > last) parts.push(text.slice(last, m.index));
+    const tok = m[0];
+    if (tok.startsWith("**")) parts.push(<strong key={`b${i++}`}>{tok.slice(2, -2)}</strong>);
+    else if (tok.startsWith("`")) parts.push(<code key={`c${i++}`} className="font-mono-tab bg-neutral-100 px-1 text-[13px]">{tok.slice(1, -1)}</code>);
+    else parts.push(<em key={`i${i++}`}>{tok.slice(1, -1)}</em>);
+    last = re.lastIndex;
+  }
+  if (last < text.length) parts.push(text.slice(last));
+  return parts;
+}
+
 export default function AiAssistant() {
   const [open, setOpen] = useState(false);
   const [messages, setMessages] = useState([]);
@@ -35,7 +54,12 @@ export default function AiAssistant() {
     const msg = (text ?? input).trim();
     if (!msg || streaming) return;
     setInput("");
-    setMessages((m) => [...m, { role: "user", content: msg }, { role: "assistant", content: "" }]);
+    const now = Date.now();
+    setMessages((m) => [
+      ...m,
+      { id: `u-${now}`, role: "user", content: msg },
+      { id: `a-${now}`, role: "assistant", content: "" },
+    ]);
     setStreaming(true);
     try {
       const resp = await fetch(`${API}/ai/chat`, {
@@ -68,7 +92,13 @@ export default function AiAssistant() {
             } else if (data.error) {
               throw new Error(data.error);
             }
-          } catch (_e) { /* ignore parse of empty */ }
+          } catch (parseErr) {
+            // Ignore malformed SSE frames — they can occur when the buffer splits mid-chunk.
+            if (typeof window !== "undefined" && window.__DEV__) {
+              // eslint-disable-next-line no-console
+              console.warn("ai-chat: skipped malformed SSE frame", parseErr);
+            }
+          }
         }
       }
     } catch (e) {
@@ -126,8 +156,8 @@ export default function AiAssistant() {
                 ))}
               </div>
             )}
-            {messages.map((m, i) => (
-              <div key={i} className={`flex gap-3 ${m.role === "user" ? "justify-end" : "justify-start"}`}>
+            {messages.map((m) => (
+              <div key={m.id} className={`flex gap-3 ${m.role === "user" ? "justify-end" : "justify-start"}`}>
                 {m.role === "assistant" && (
                   <div className="w-7 h-7 shrink-0 bg-yellow-400 flex items-center justify-center">
                     <Robot weight="fill" size={16} className="text-neutral-900" />
@@ -140,7 +170,9 @@ export default function AiAssistant() {
                       : "bg-white border border-neutral-200 text-neutral-900"
                   }`}
                 >
-                  {m.content || <span className="opacity-40">…</span>}
+                  {m.content
+                    ? renderInline(m.content)
+                    : <span className="opacity-40">…</span>}
                 </div>
                 {m.role === "user" && (
                   <div className="w-7 h-7 shrink-0 bg-neutral-200 flex items-center justify-center">
