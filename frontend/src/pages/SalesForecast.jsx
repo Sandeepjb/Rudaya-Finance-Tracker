@@ -9,20 +9,24 @@ import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import { Plus, PencilSimple, Trash, Target } from "@phosphor-icons/react";
+import { TypeBadge } from "@/components/TypeBadge";
+import { typeColor } from "@/lib/format";
 
 const currentYear = new Date().getFullYear();
 const YEARS = [currentYear - 1, currentYear, currentYear + 1, currentYear + 2];
+const TYPES = ["Revenue", "Cost", "Expense"];
 const MONTHS = [
   { v: 1, l: "January" }, { v: 2, l: "February" }, { v: 3, l: "March" }, { v: 4, l: "April" },
   { v: 5, l: "May" }, { v: 6, l: "June" }, { v: 7, l: "July" }, { v: 8, l: "August" },
   { v: 9, l: "September" }, { v: 10, l: "October" }, { v: 11, l: "November" }, { v: 12, l: "December" },
 ];
 const UNALLOCATED = "__unallocated__";
-const ANY_PROJECT = "all";
+const ANY = "all";
 
 const emptyForm = () => ({
   year: currentYear,
   month: new Date().getMonth() + 1,
+  type: "Revenue",
   project_id: "",
   amount: "",
   notes: "",
@@ -38,39 +42,41 @@ export default function SalesForecast() {
   const [items, setItems] = useState([]);
   const [meta, setMeta] = useState({ project_ids: [] });
   const [filterYear, setFilterYear] = useState(currentYear);
-  const [filterProject, setFilterProject] = useState(ANY_PROJECT);
+  const [filterProject, setFilterProject] = useState(ANY);
+  const [filterType, setFilterType] = useState(ANY);
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState(null);
 
   const load = useCallback(async () => {
     const params = { year: filterYear };
-    if (filterProject && filterProject !== ANY_PROJECT) {
+    if (filterProject && filterProject !== ANY) {
       params.project_id = filterProject === UNALLOCATED ? "" : filterProject;
     }
     const r = await api.get("/sales-forecast", { params });
-    // If user selected "unallocated" filter, keep only empty project_id
     let rows = r.data;
     if (filterProject === UNALLOCATED) rows = rows.filter((x) => !x.project_id);
+    if (filterType !== ANY) rows = rows.filter((x) => x.type === filterType);
     setItems(rows);
-  }, [filterYear, filterProject]);
+  }, [filterYear, filterProject, filterType]);
 
   useEffect(() => {
     api.get("/meta").then((r) => setMeta(r.data));
-    // api and setMeta are stable module/react identities; effect must run once on mount.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => { load(); }, [load]);
 
   const totals = useMemo(() => {
-    const monthly = {};
+    const byMonth = {};
+    const byType = { Revenue: 0, Cost: 0, Expense: 0 };
     let grand = 0;
-    for (let m = 1; m <= 12; m++) monthly[m] = 0;
+    for (let m = 1; m <= 12; m++) byMonth[m] = 0;
     items.forEach((i) => {
-      monthly[i.month] = (monthly[i.month] || 0) + i.amount;
+      byMonth[i.month] = (byMonth[i.month] || 0) + i.amount;
+      byType[i.type] = (byType[i.type] || 0) + i.amount;
       grand += i.amount;
     });
-    return { monthly, grand };
+    return { byMonth, byType, grand };
   }, [items]);
 
   const remove = async (id) => {
@@ -85,14 +91,13 @@ export default function SalesForecast() {
   return (
     <Layout
       title="Sales Forecast"
-      subtitle={`${items.length} line item${items.length === 1 ? "" : "s"} · Total ${inr(totals.grand)}`}
+      subtitle={`${items.length} line items · Rev ${inr(totals.byType.Revenue)} · Cost ${inr(totals.byType.Cost)} · Exp ${inr(totals.byType.Expense)}`}
       actions={
         <Button data-testid="add-sf-btn" className="rounded-none bg-neutral-900 hover:bg-neutral-700" onClick={() => { setEditing(null); setOpen(true); }}>
           <Plus size={16} className="mr-2" /> New Entry
         </Button>
       }
     >
-      {/* Filters */}
       <div className="rudaya-card p-4 mb-4">
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 items-end">
           <div>
@@ -103,11 +108,21 @@ export default function SalesForecast() {
             </Select>
           </div>
           <div>
+            <Label className="text-[11px] uppercase tracking-wider text-neutral-500">Type</Label>
+            <Select value={filterType} onValueChange={setFilterType}>
+              <SelectTrigger data-testid="sf-filter-type" className="rounded-none mt-1"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value={ANY}>All Types</SelectItem>
+                {TYPES.map((t) => <SelectItem key={t} value={t}>{t}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
             <Label className="text-[11px] uppercase tracking-wider text-neutral-500">Project</Label>
             <Select value={filterProject} onValueChange={setFilterProject}>
-              <SelectTrigger data-testid="sf-filter-project" className="rounded-none mt-1"><SelectValue placeholder="All projects" /></SelectTrigger>
+              <SelectTrigger data-testid="sf-filter-project" className="rounded-none mt-1"><SelectValue /></SelectTrigger>
               <SelectContent className="max-h-72">
-                <SelectItem value={ANY_PROJECT}>All Projects</SelectItem>
+                <SelectItem value={ANY}>All Projects</SelectItem>
                 <SelectItem value={UNALLOCATED}>Unallocated</SelectItem>
                 {meta.project_ids?.map((p) => <SelectItem key={p.code} value={p.code}>{p.code}</SelectItem>)}
               </SelectContent>
@@ -116,25 +131,24 @@ export default function SalesForecast() {
         </div>
       </div>
 
-      {/* Monthly totals strip */}
       <div className="rudaya-card p-4 mb-4">
         <div className="text-[11px] uppercase tracking-[0.2em] text-neutral-500 mb-3">Monthly totals · {filterYear}</div>
         <div className="grid grid-cols-4 md:grid-cols-12 gap-2">
           {MONTHS.map((m) => (
             <div key={m.v} className="border border-neutral-200 p-2" data-testid={`sf-total-m-${m.v}`}>
               <div className="text-[10px] uppercase tracking-wider text-neutral-500">{m.l.slice(0, 3)}</div>
-              <div className="font-mono-tab text-sm font-medium mt-1 text-neutral-900">{inr(totals.monthly[m.v])}</div>
+              <div className="font-mono-tab text-sm font-medium mt-1 text-neutral-900">{inr(totals.byMonth[m.v])}</div>
             </div>
           ))}
         </div>
       </div>
 
-      {/* Line items table */}
       <div className="rudaya-card overflow-hidden">
         <table className="w-full" data-testid="sales-forecast-table">
           <thead className="bg-neutral-50 border-b border-neutral-200">
             <tr className="text-left text-[11px] uppercase tracking-wider text-neutral-500">
               <th className="px-4 py-3">Month</th>
+              <th className="px-3 py-3">Type</th>
               <th className="px-3 py-3">Project</th>
               <th className="px-3 py-3">Notes</th>
               <th className="px-4 py-3 text-right">Amount</th>
@@ -147,11 +161,12 @@ export default function SalesForecast() {
                 <td className="px-4 py-2 font-mono-tab text-sm whitespace-nowrap">
                   {MONTHS.find((mm) => mm.v === i.month)?.l.slice(0, 3)} {i.year}
                 </td>
+                <td className="px-3 py-2"><TypeBadge type={i.type} /></td>
                 <td className="px-3 py-2 text-sm">
                   {i.project_id ? <span className="font-mono-tab text-xs text-neutral-700">{i.project_id}</span> : <span className="text-xs uppercase tracking-wider text-neutral-400">Unallocated</span>}
                 </td>
                 <td className="px-3 py-2 text-sm text-neutral-700 max-w-[320px] truncate" title={i.notes}>{i.notes}</td>
-                <td className="px-4 py-2 text-right font-mono-tab text-sm font-medium">{inr(i.amount)}</td>
+                <td className="px-4 py-2 text-right font-mono-tab text-sm font-medium" style={{ color: typeColor(i.type) }}>{inr(i.amount)}</td>
                 <td className="px-3 py-2 text-right">
                   <button data-testid={`edit-sf-${i.id}`} onClick={() => { setEditing(i); setOpen(true); }} className="p-1.5 hover:bg-neutral-200 mr-1"><PencilSimple size={14} /></button>
                   <button data-testid={`delete-sf-${i.id}`} onClick={() => remove(i.id)} className="p-1.5 hover:bg-red-100 text-red-600"><Trash size={14} /></button>
@@ -159,7 +174,7 @@ export default function SalesForecast() {
               </tr>
             ))}
             {items.length === 0 && (
-              <tr><td colSpan="5" className="px-4 py-12 text-center text-neutral-500 text-sm">
+              <tr><td colSpan="6" className="px-4 py-12 text-center text-neutral-500 text-sm">
                 <Target size={22} className="mx-auto text-neutral-300 mb-2" />
                 No sales forecast entries yet. Click <b>New Entry</b> to add one.
               </td></tr>
@@ -168,7 +183,7 @@ export default function SalesForecast() {
           {items.length > 0 && (
             <tfoot className="bg-neutral-900 text-white">
               <tr>
-                <td colSpan="3" className="px-4 py-3 uppercase text-[11px] tracking-widest">Total · {filterYear}</td>
+                <td colSpan="4" className="px-4 py-3 uppercase text-[11px] tracking-widest">Total · {filterYear}</td>
                 <td className="px-4 py-3 text-right font-mono-tab text-sm font-semibold">{inr(totals.grand)}</td>
                 <td></td>
               </tr>
@@ -197,11 +212,10 @@ function SalesForecastDrawer({ open, onOpenChange, editing, meta, onSaved, defau
     if (!open) return;
     if (editing) {
       setForm({
-        year: editing.year,
-        month: editing.month,
+        year: editing.year, month: editing.month,
+        type: editing.type || "Revenue",
         project_id: editing.project_id || "",
-        amount: editing.amount,
-        notes: editing.notes || "",
+        amount: editing.amount, notes: editing.notes || "",
       });
     } else {
       setForm({ ...emptyForm(), year: defaultYear });
@@ -213,20 +227,18 @@ function SalesForecastDrawer({ open, onOpenChange, editing, meta, onSaved, defau
     setSaving(true);
     try {
       const payload = {
-        year: parseInt(form.year),
-        month: parseInt(form.month),
+        year: parseInt(form.year), month: parseInt(form.month),
+        type: form.type,
         project_id: form.project_id === UNALLOCATED ? "" : form.project_id,
-        amount: parseFloat(form.amount),
-        notes: form.notes,
+        amount: parseFloat(form.amount), notes: form.notes,
       };
       if (editing) await api.put(`/sales-forecast/${editing.id}`, payload);
       else await api.post("/sales-forecast", payload);
       toast.success(editing ? "Updated" : "Created");
       onOpenChange(false);
       onSaved();
-    } catch (e) {
-      toast.error(formatApiError(e.response?.data?.detail));
-    } finally { setSaving(false); }
+    } catch (e) { toast.error(formatApiError(e.response?.data?.detail)); }
+    finally { setSaving(false); }
   };
 
   const disabled = saving || !form.amount || isNaN(parseFloat(form.amount)) || !form.year || !form.month;
@@ -237,7 +249,7 @@ function SalesForecastDrawer({ open, onOpenChange, editing, meta, onSaved, defau
         <SheetHeader>
           <div className="text-[11px] uppercase tracking-[0.25em] text-neutral-500">{editing ? "Edit" : "New"} Sales Forecast</div>
           <SheetTitle className="font-heading text-2xl tracking-tight">Forecast Entry</SheetTitle>
-          <SheetDescription>Add a month-wise sales forecast line item, optionally tagged to a project.</SheetDescription>
+          <SheetDescription>Add a month-wise sales forecast line item classified as Revenue, Cost or Expense.</SheetDescription>
         </SheetHeader>
         <div className="mt-6 space-y-4">
           <div className="grid grid-cols-2 gap-3">
@@ -257,9 +269,16 @@ function SalesForecastDrawer({ open, onOpenChange, editing, meta, onSaved, defau
             </div>
           </div>
           <div>
+            <Label className="text-xs uppercase tracking-wider">Type</Label>
+            <Select value={form.type} onValueChange={(v) => setForm({ ...form, type: v })}>
+              <SelectTrigger data-testid="sf-type" className="rounded-none mt-1"><SelectValue /></SelectTrigger>
+              <SelectContent>{TYPES.map((t) => <SelectItem key={t} value={t}>{t}</SelectItem>)}</SelectContent>
+            </Select>
+          </div>
+          <div>
             <Label className="text-xs uppercase tracking-wider">Project ID (optional)</Label>
             <Select value={form.project_id || UNALLOCATED} onValueChange={(v) => setForm({ ...form, project_id: v === UNALLOCATED ? "" : v })}>
-              <SelectTrigger data-testid="sf-project" className="rounded-none mt-1"><SelectValue placeholder="Unallocated" /></SelectTrigger>
+              <SelectTrigger data-testid="sf-project" className="rounded-none mt-1"><SelectValue /></SelectTrigger>
               <SelectContent className="max-h-72">
                 <SelectItem value={UNALLOCATED}>Unallocated</SelectItem>
                 {meta.project_ids?.map((p) => <SelectItem key={p.code} value={p.code}>{p.code}</SelectItem>)}

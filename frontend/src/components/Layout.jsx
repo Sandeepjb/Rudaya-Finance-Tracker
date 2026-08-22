@@ -1,5 +1,6 @@
 import React from "react";
 import Sidebar from "@/components/Sidebar";
+import AiAssistant from "@/components/AiAssistant";
 
 export default function Layout({ title, subtitle, actions, children }) {
   return (
@@ -18,6 +19,7 @@ export default function Layout({ title, subtitle, actions, children }) {
         </header>
         <div className="p-8 rudaya-scroll">{children}</div>
       </main>
+      <AiAssistant />
     </div>
   );
 }
