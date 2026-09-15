@@ -1,7 +1,7 @@
 import React from "react";
 import { NavLink, useNavigate } from "react-router-dom";
 import { useAuth } from "@/lib/auth";
-import { ChartBar, ListChecks, Buildings, Calendar, SignOut, Gear, Target, ChartPieSlice, FileText } from "@phosphor-icons/react";
+import { ChartBar, ListChecks, Buildings, Calendar, SignOut, Gear, Target, ChartPieSlice, FileText, Wallet } from "@phosphor-icons/react";
 
 const items = [
   { to: "/", label: "Dashboard", icon: ChartBar, testid: "nav-dashboard" },
@@ -9,6 +9,7 @@ const items = [
   { to: "/quotations", label: "Quotations", icon: FileText, testid: "nav-quotations" },
   { to: "/sales-forecast", label: "Sales Forecast", icon: Target, testid: "nav-sales-forecast" },
   { to: "/forecast", label: "Forecast vs Actual", icon: ChartPieSlice, testid: "nav-forecast" },
+  { to: "/budget", label: "Expense Budget", icon: Wallet, testid: "nav-budget" },
   { to: "/project-pnl", label: "Project P&L", icon: Buildings, testid: "nav-project-pnl" },
   { to: "/monthly", label: "Monthly", icon: Calendar, testid: "nav-monthly" },
   { to: "/settings", label: "Settings", icon: Gear, testid: "nav-settings" },

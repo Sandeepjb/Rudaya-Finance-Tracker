@@ -11,6 +11,7 @@ import Monthly from "@/pages/Monthly";
 import Forecast from "@/pages/Forecast";
 import SalesForecast from "@/pages/SalesForecast";
 import Quotations from "@/pages/Quotations";
+import Budget from "@/pages/Budget";
 import Settings from "@/pages/Settings";
 
 function Protected({ children }) {
@@ -42,6 +43,7 @@ function App() {
             <Route path="/forecast" element={<Protected><Forecast /></Protected>} />
             <Route path="/sales-forecast" element={<Protected><SalesForecast /></Protected>} />
             <Route path="/quotations" element={<Protected><Quotations /></Protected>} />
+            <Route path="/budget" element={<Protected><Budget /></Protected>} />
             <Route path="/settings" element={<Protected><Settings /></Protected>} />
           </Routes>
           <Toaster position="top-right" />

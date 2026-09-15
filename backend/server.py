@@ -182,6 +182,152 @@ async def add_account(payload: AccountIn, user: dict = Depends(get_current_user)
     return {"ok": True}
 
 
+# --- Yearly Expense Budget (Account = Settings.accounts.name is the SoT) ---
+class BudgetIn(BaseModel):
+    year: int
+    account: str          # MUST match an existing Settings account name
+    amount: float
+    notes: str = ""
+
+
+def _budget_out(d: dict) -> dict:
+    return {
+        "id": str(d["_id"]),
+        "year": d["year"], "account": d["account"],
+        "amount": d["amount"], "notes": d.get("notes", ""),
+        "created_at": d.get("created_at", ""),
+        "updated_at": d.get("updated_at", ""),
+    }
+
+
+async def _account_exists(name: str) -> bool:
+    return bool(await db.accounts.find_one({"name": name}))
+
+
+@api_router.get("/budgets")
+async def list_budgets(user: dict = Depends(get_current_user), year: Optional[int] = None):
+    q = {}
+    if year:
+        q["year"] = year
+    docs = await db.budgets.find(q).sort([("year", -1), ("account", 1)]).to_list(1000)
+    return [_budget_out(d) for d in docs]
+
+
+@api_router.post("/budgets")
+async def create_budget(payload: BudgetIn, user: dict = Depends(get_current_user)):
+    if not await _account_exists(payload.account):
+        raise HTTPException(400, f"Account '{payload.account}' does not exist in Settings")
+    if await db.budgets.find_one({"year": payload.year, "account": payload.account}):
+        raise HTTPException(409, f"Budget for {payload.account} · {payload.year} already exists — edit it instead")
+    doc = payload.model_dump()
+    doc["created_at"] = datetime.now(timezone.utc).isoformat()
+    doc["updated_at"] = doc["created_at"]
+    doc["created_by"] = user["email"]
+    r = await db.budgets.insert_one(doc)
+    doc["_id"] = r.inserted_id
+    return _budget_out(doc)
+
+
+@api_router.put("/budgets/{bid}")
+async def update_budget(bid: str, payload: BudgetIn, user: dict = Depends(get_current_user)):
+    if not await _account_exists(payload.account):
+        raise HTTPException(400, f"Account '{payload.account}' does not exist in Settings")
+    try:
+        oid = ObjectId(bid)
+    except Exception:
+        raise HTTPException(400, "Invalid id")
+    # Prevent creating a (year, account) duplicate via update
+    dup = await db.budgets.find_one({"year": payload.year, "account": payload.account, "_id": {"$ne": oid}})
+    if dup:
+        raise HTTPException(409, f"Budget for {payload.account} · {payload.year} already exists")
+    update = {**payload.model_dump(),
+              "updated_at": datetime.now(timezone.utc).isoformat(),
+              "updated_by": user["email"]}
+    r = await db.budgets.update_one({"_id": oid}, {"$set": update})
+    if r.matched_count == 0:
+        raise HTTPException(404, "Not found")
+    doc = await db.budgets.find_one({"_id": oid})
+    return _budget_out(doc)
+
+
+@api_router.delete("/budgets/{bid}")
+async def delete_budget(bid: str, user: dict = Depends(get_current_user)):
+    try:
+        oid = ObjectId(bid)
+    except Exception:
+        raise HTTPException(400, "Invalid id")
+    r = await db.budgets.delete_one({"_id": oid})
+    if r.deleted_count == 0:
+        raise HTTPException(404, "Not found")
+    return {"ok": True}
+
+
+@api_router.get("/reports/budget-vs-actual")
+async def budget_vs_actual(user: dict = Depends(get_current_user), year: Optional[int] = None):
+    """Yearly Expense Budget vs Actual. Actual = SUM of Expense transactions per account for `year`.
+    Rows include ALL budgeted accounts; also lists spent-but-unbudgeted accounts as info rows.
+    Account is the existing Settings account name — single source of truth."""
+    year = year or datetime.now(timezone.utc).year
+
+    # Actual expense per account for the year
+    actual = {}
+    async for t in db.transactions.find({"type": "Expense"}):
+        dt = _parse_iso(t.get("date", ""))
+        if not dt or dt.year != year:
+            continue
+        a = t.get("account") or "(none)"
+        actual[a] = actual.get(a, 0) + t.get("amount", 0)
+
+    # Budgets for the year — one doc per (year, account)
+    b_docs = await db.budgets.find({"year": year}).to_list(1000)
+    budgets = {b["account"]: b for b in b_docs}
+
+    def status_of(util):
+        if util is None:
+            return "unbudgeted"
+        if util > 100:
+            return "over"
+        if util > 90:
+            return "risk"
+        return "ok"
+
+    rows = []
+    # Budgeted rows first
+    for name, b in budgets.items():
+        amt = b.get("amount", 0)
+        act = actual.get(name, 0)
+        util = (act / amt * 100) if amt else None
+        rows.append({
+            "budget_id": str(b["_id"]),
+            "account": name,
+            "budget": amt,
+            "actual": act,
+            "remaining": max(0.0, amt - act),
+            "deficit": max(0.0, act - amt),
+            "utilization_pct": util,
+            "status": status_of(util),
+        })
+    # Unbudgeted accounts that have actual spend — surfaced so users can budget them
+    for name, act in actual.items():
+        if name in budgets:
+            continue
+        rows.append({
+            "budget_id": None, "account": name,
+            "budget": 0, "actual": act, "remaining": 0, "deficit": act,
+            "utilization_pct": None, "status": "unbudgeted",
+        })
+    rows.sort(key=lambda r: (0 if r["status"] == "over" else 1 if r["status"] == "risk" else 2 if r["status"] == "ok" else 3, -r["actual"]))
+
+    totals = {
+        "budget": sum(r["budget"] for r in rows),
+        "actual": sum(r["actual"] for r in rows),
+    }
+    totals["remaining"] = max(0.0, totals["budget"] - totals["actual"])
+    totals["deficit"] = max(0.0, totals["actual"] - totals["budget"])
+    totals["utilization_pct"] = (totals["actual"] / totals["budget"] * 100) if totals["budget"] else None
+    return {"year": year, "rows": rows, "totals": totals}
+
+
 # --- Transaction endpoints ---
 def txn_out(doc: dict) -> dict:
     return {
@@ -1012,6 +1158,8 @@ async def startup():
     await db.quotations.create_index([("expected_year", 1), ("expected_month", 1)])
     await db.quotations.create_index("status")
     await db.quotations.create_index("quotation_number", unique=True)
+    await db.budgets.create_index([("year", 1), ("account", 1)], unique=True)
+    await db.budgets.create_index("account")
     await seed_all()
 
 
