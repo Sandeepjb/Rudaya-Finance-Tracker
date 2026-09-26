@@ -160,7 +160,7 @@ class TestSalesForecastCrud:
 
 # --- Consolidated forecast vs actual report (typed by Revenue/Cost/Expense) ---
 class TestForecastVsActual:
-    def test_consolidation_from_sales_forecast(self, client):
+    def test_consolidation_from_sales_forecast(self, client, txn_state_lock):
         r = client.get(f"{API}/reports/forecast-vs-actual", params={"year": YEAR})
         assert r.status_code == 200, r.text[:300]
         d = r.json()

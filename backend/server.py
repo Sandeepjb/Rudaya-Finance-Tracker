@@ -9,12 +9,15 @@ import json
 import logging
 import bcrypt
 import jwt
+import csv
+import io
+import hashlib
 from datetime import datetime, timezone, timedelta
 from typing import List, Optional
 from bson import ObjectId
 from pymongo.errors import DuplicateKeyError
 
-from fastapi import FastAPI, APIRouter, HTTPException, Depends, Request, Response, Query
+from fastapi import FastAPI, APIRouter, HTTPException, Depends, Request, Response, Query, UploadFile, File, Form
 from fastapi.responses import StreamingResponse
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
@@ -84,6 +87,38 @@ def user_public(u: dict) -> dict:
             "name": u.get("name", ""), "role": u.get("role", "member")}
 
 
+async def require_admin(user: dict = Depends(get_current_user)) -> dict:
+    if user.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Admin only")
+    return user
+
+
+# --- Brute-force login lockout (5 failed attempts / 15 min → HTTP 423) ---
+LOCKOUT_THRESHOLD = 5
+LOCKOUT_WINDOW_SECS = 900
+_login_attempts: dict = {}  # email -> list[epoch_seconds]
+
+
+def _prune_attempts(email: str) -> list:
+    now = datetime.now(timezone.utc).timestamp()
+    kept = [t for t in _login_attempts.get(email, []) if now - t < LOCKOUT_WINDOW_SECS]
+    _login_attempts[email] = kept
+    return kept
+
+
+def _check_lockout(email: str):
+    if len(_prune_attempts(email)) >= LOCKOUT_THRESHOLD:
+        raise HTTPException(status_code=423, detail="Account temporarily locked. Try again in 15 minutes.")
+
+
+def _record_failed_login(email: str):
+    _login_attempts.setdefault(email, []).append(datetime.now(timezone.utc).timestamp())
+
+
+def _clear_login_attempts(email: str):
+    _login_attempts.pop(email, None)
+
+
 # --- Auth models ---
 class RegisterIn(BaseModel):
     email: EmailStr
@@ -129,9 +164,15 @@ async def register(payload: RegisterIn, response: Response):
 @api_router.post("/auth/login")
 async def login(payload: LoginIn, response: Response):
     email = payload.email.lower().strip()
+    _check_lockout(email)
     user = await db.users.find_one({"email": email})
     if not user or not verify_password(payload.password, user["password_hash"]):
+        _record_failed_login(email)
+        # After recording, re-check so the 5th failed attempt itself surfaces the lockout.
+        if len(_prune_attempts(email)) >= LOCKOUT_THRESHOLD:
+            raise HTTPException(status_code=423, detail="Account temporarily locked. Try again in 15 minutes.")
         raise HTTPException(status_code=401, detail="Invalid email or password")
+    _clear_login_attempts(email)
     token = create_access_token(str(user["_id"]), email)
     set_auth_cookie(response, token)
     return {"user": user_public(user), "token": token}
@@ -1089,6 +1130,273 @@ async def reject_pending(pid: str, user: dict = Depends(get_current_user)):
     return {"ok": True}
 
 
+# --- Data Migration: Admin-only CSV Import ---
+REQUIRED_CSV_HEADERS = ["date", "type", "account", "amount", "project_id", "notes"]
+ALLOWED_TXN_TYPES = {"Revenue", "Cost", "Expense"}
+
+
+def _normalize_type(v: str) -> Optional[str]:
+    if not v:
+        return None
+    s = v.strip().lower()
+    mapping = {"revenue": "Revenue", "cost": "Cost", "expense": "Expense"}
+    return mapping.get(s)
+
+
+def _parse_import_date(v: str) -> Optional[str]:
+    """Accept YYYY-MM-DD, DD/MM/YYYY, DD-MM-YYYY. Return ISO YYYY-MM-DD or None."""
+    if not v:
+        return None
+    v = v.strip()
+    for fmt in ("%Y-%m-%d", "%d/%m/%Y", "%d-%m-%Y"):
+        try:
+            return datetime.strptime(v, fmt).strftime("%Y-%m-%d")
+        except ValueError:
+            continue
+    return None
+
+
+def _fingerprint(txn: dict) -> str:
+    """Stable hash of (date, type, account, amount, project_id, notes)."""
+    parts = [
+        (txn.get("date") or "")[:10],
+        (txn.get("type") or "").strip(),
+        (txn.get("account") or "").strip(),
+        f"{float(txn.get('amount') or 0):.2f}",
+        (txn.get("project_id") or "").strip(),
+        (txn.get("notes") or "").strip(),
+    ]
+    raw = "|".join(parts)
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+
+def _parse_csv_rows(raw: bytes) -> tuple:
+    """Return (rows, header_error). rows is list of dicts with row_number + raw + parsed + errors."""
+    try:
+        text = raw.decode("utf-8-sig")
+    except UnicodeDecodeError:
+        text = raw.decode("latin-1", errors="replace")
+    reader = csv.reader(io.StringIO(text))
+    try:
+        header = next(reader)
+    except StopIteration:
+        return [], "CSV is empty"
+    header_norm = [h.strip().lower() for h in header]
+    missing = [h for h in REQUIRED_CSV_HEADERS if h not in header_norm]
+    if missing:
+        return [], f"Missing required column(s): {', '.join(missing)}"
+    idx = {h: header_norm.index(h) for h in REQUIRED_CSV_HEADERS}
+
+    out = []
+    for i, row in enumerate(reader, start=2):  # header is row 1
+        if not any(c.strip() for c in row):
+            continue  # skip blank lines
+        raw_row = {h: (row[idx[h]] if idx[h] < len(row) else "") for h in REQUIRED_CSV_HEADERS}
+        errors = []
+        parsed_date = _parse_import_date(raw_row["date"])
+        if not parsed_date:
+            errors.append("Invalid or missing date (accepted: YYYY-MM-DD, DD/MM/YYYY, DD-MM-YYYY)")
+        ttype = _normalize_type(raw_row["type"])
+        if not ttype:
+            errors.append("Type must be Revenue, Cost, or Expense")
+        account = raw_row["account"].strip()
+        if not account:
+            errors.append("Account is required")
+        try:
+            amount = float(raw_row["amount"])
+            if amount <= 0:
+                errors.append("Amount must be a positive number")
+        except (TypeError, ValueError):
+            amount = None
+            errors.append("Amount must be numeric")
+        project_id = raw_row["project_id"].strip()
+        if not project_id:
+            errors.append("Project ID is required")
+        notes = raw_row["notes"].strip()
+
+        parsed = None
+        if not errors:
+            parsed = {
+                "date": parsed_date,
+                "type": ttype,
+                "account": account,
+                "amount": amount,
+                "project_id": project_id,
+                "notes": notes,
+            }
+        out.append({
+            "row_number": i,
+            "raw": raw_row,
+            "parsed": parsed,
+            "errors": errors,
+            "valid": len(errors) == 0,
+            "fingerprint": _fingerprint(parsed) if parsed else "",
+        })
+    return out, None
+
+
+async def _existing_fingerprints() -> set:
+    """Compute fingerprints of every existing transaction (safe for tens of thousands of rows)."""
+    fps = set()
+    async for t in db.transactions.find({}, {"date": 1, "type": 1, "account": 1, "amount": 1, "project_id": 1, "notes": 1, "fingerprint": 1}):
+        fp = t.get("fingerprint") or _fingerprint(t)
+        fps.add(fp)
+    return fps
+
+
+def _summarize(rows: list) -> dict:
+    by_type = {"Revenue": {"count": 0, "total": 0.0},
+               "Cost": {"count": 0, "total": 0.0},
+               "Expense": {"count": 0, "total": 0.0}}
+    valid = 0
+    invalid = 0
+    duplicates = 0
+    for r in rows:
+        if not r["valid"]:
+            invalid += 1
+            continue
+        valid += 1
+        if r.get("duplicate"):
+            duplicates += 1
+        p = r["parsed"]
+        by_type[p["type"]]["count"] += 1
+        by_type[p["type"]]["total"] += p["amount"]
+    return {
+        "total_rows": len(rows),
+        "valid_rows": valid,
+        "invalid_rows": invalid,
+        "duplicates": duplicates,
+        "by_type": by_type,
+    }
+
+
+@api_router.post("/migrations/preview")
+async def preview_import(file: UploadFile = File(...), user: dict = Depends(require_admin)):
+    raw = await file.read()
+    rows, header_error = _parse_csv_rows(raw)
+    if header_error:
+        raise HTTPException(status_code=400, detail=header_error)
+    fps = await _existing_fingerprints()
+    for r in rows:
+        r["duplicate"] = bool(r["valid"] and r["fingerprint"] in fps)
+    summary = _summarize(rows)
+    return {
+        "filename": file.filename,
+        **summary,
+        "rows": rows,
+    }
+
+
+@api_router.post("/migrations/import")
+async def import_csv(
+    file: UploadFile = File(...),
+    mode: str = Form(...),
+    user: dict = Depends(require_admin),
+):
+    if mode not in ("skip_duplicates", "replace_existing"):
+        raise HTTPException(status_code=400, detail="mode must be 'skip_duplicates' or 'replace_existing'")
+    raw = await file.read()
+    rows, header_error = _parse_csv_rows(raw)
+    if header_error:
+        raise HTTPException(status_code=400, detail=header_error)
+    if not rows:
+        raise HTTPException(status_code=400, detail="CSV has no data rows")
+
+    valid_rows = [r for r in rows if r["valid"]]
+    invalid_count = len(rows) - len(valid_rows)
+    if not valid_rows:
+        raise HTTPException(status_code=400, detail=f"No valid rows to import ({invalid_count} invalid)")
+
+    now_iso = datetime.now(timezone.utc).isoformat()
+    backup_ref = None
+    backup_count = 0
+
+    if mode == "replace_existing":
+        # Back up existing transactions BEFORE deleting.
+        backup_stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+        existing = await db.transactions.find({}).to_list(None)
+        backup_count = len(existing)
+        if backup_count:
+            backup_docs = []
+            for t in existing:
+                t_copy = dict(t)
+                t_copy["_original_id"] = str(t_copy.pop("_id"))
+                t_copy["_backup_stamp"] = backup_stamp
+                t_copy["_backed_up_by"] = user["email"]
+                t_copy["_backed_up_at"] = now_iso
+                backup_docs.append(t_copy)
+            await db.transaction_import_backups.insert_many(backup_docs)
+        await db.transactions.delete_many({})
+        backup_ref = {"stamp": backup_stamp, "count": backup_count}
+
+    # After a replace, the DB is empty — recompute fingerprints for skip-duplicates fresh.
+    existing_fps = await _existing_fingerprints()
+
+    inserted_docs = []
+    skipped_duplicate = 0
+    seen_in_batch: set = set()
+    for r in valid_rows:
+        fp = r["fingerprint"]
+        if fp in existing_fps or fp in seen_in_batch:
+            skipped_duplicate += 1
+            continue
+        seen_in_batch.add(fp)
+        doc = dict(r["parsed"])
+        doc["created_at"] = now_iso
+        doc["created_by"] = user["email"]
+        doc["source"] = "csv_import"
+        doc["fingerprint"] = fp
+        inserted_docs.append(doc)
+
+    inserted_count = 0
+    if inserted_docs:
+        res = await db.transactions.insert_many(inserted_docs)
+        inserted_count = len(res.inserted_ids)
+
+    history_doc = {
+        "filename": file.filename,
+        "mode": mode,
+        "admin_email": user["email"],
+        "started_at": now_iso,
+        "completed_at": datetime.now(timezone.utc).isoformat(),
+        "total_rows": len(rows),
+        "invalid_rows": invalid_count,
+        "inserted": inserted_count,
+        "skipped_duplicate": skipped_duplicate,
+        "backup_stamp": backup_ref["stamp"] if backup_ref else None,
+        "backed_up_count": backup_count,
+    }
+    hist_res = await db.import_history.insert_one(history_doc)
+
+    return {
+        "ok": True,
+        "history_id": str(hist_res.inserted_id),
+        "mode": mode,
+        "inserted": inserted_count,
+        "skipped_duplicate": skipped_duplicate,
+        "invalid_rows": invalid_count,
+        "total_rows": len(rows),
+        "backup": backup_ref,
+    }
+
+
+@api_router.get("/migrations/history")
+async def import_history(user: dict = Depends(require_admin), limit: int = 50):
+    docs = await db.import_history.find({}).sort("completed_at", -1).to_list(limit)
+    return [{"id": str(d["_id"]),
+             "filename": d.get("filename", ""),
+             "mode": d.get("mode", ""),
+             "admin_email": d.get("admin_email", ""),
+             "started_at": d.get("started_at", ""),
+             "completed_at": d.get("completed_at", ""),
+             "total_rows": d.get("total_rows", 0),
+             "invalid_rows": d.get("invalid_rows", 0),
+             "inserted": d.get("inserted", 0),
+             "skipped_duplicate": d.get("skipped_duplicate", 0),
+             "backup_stamp": d.get("backup_stamp"),
+             "backed_up_count": d.get("backed_up_count", 0)} for d in docs]
+
+
 # --- Seeding ---
 async def _seed_admin_user() -> str:
     admin_email = os.environ["ADMIN_EMAIL"].lower().strip()
@@ -1160,6 +1468,9 @@ async def startup():
     await db.quotations.create_index("quotation_number", unique=True)
     await db.budgets.create_index([("year", 1), ("account", 1)], unique=True)
     await db.budgets.create_index("account")
+    await db.transactions.create_index("fingerprint")
+    await db.transaction_import_backups.create_index("_backup_stamp")
+    await db.import_history.create_index("completed_at")
     await seed_all()
 
 

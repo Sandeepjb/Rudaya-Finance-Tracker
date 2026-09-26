@@ -1,8 +1,10 @@
 """Regression: typed forecast-vs-actual schema, quotation->forecast contribution, AI SSE stream."""
 import json
 import os
+import re
 import time
 import uuid
+from pathlib import Path
 
 import pytest
 import requests
@@ -10,7 +12,21 @@ from dotenv import dotenv_values
 
 BASE_URL = (os.environ.get("REACT_APP_BACKEND_URL")
             or dotenv_values("/app/frontend/.env").get("REACT_APP_BACKEND_URL")).rstrip("/")
-CREDS = {"email": "sandeepjb2014@gmail.com", "password": "Rudaya@2026"}
+
+
+def _creds():
+    p = Path("/app/memory/test_credentials.md")
+    if not p.exists():
+        pytest.skip("missing test_credentials.md")
+    c = p.read_text()
+    e = re.search(r"(?im)^\s*(?:[-*]\s*)?(?:\*\*)?email(?:\*\*)?\s*:\s*`?([^`\s]+)", c)
+    pw = re.search(r"(?im)^\s*(?:[-*]\s*)?(?:\*\*)?password(?:\*\*)?\s*:\s*`?([^`\s]+)", c)
+    if not e or not pw:
+        pytest.skip("creds not parseable")
+    return {"email": e.group(1), "password": pw.group(1)}
+
+
+CREDS = _creds()
 TYPES = ["Revenue", "Cost", "Expense"]
 
 
@@ -57,7 +73,7 @@ class TestTypedSchema:
 
 # --- quotation CRUD + forecast contribution ---
 class TestQuotationForecast:
-    def test_quotation_crud_and_forecast(self, client):
+    def test_quotation_crud_and_forecast(self, client, txn_state_lock):
         y, m = 2026, 3
         before = client.get(f"{BASE_URL}/api/reports/forecast-vs-actual",
                             params={"year": y}, timeout=30).json()

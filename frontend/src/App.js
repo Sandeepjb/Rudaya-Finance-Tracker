@@ -12,6 +12,7 @@ import Forecast from "@/pages/Forecast";
 import SalesForecast from "@/pages/SalesForecast";
 import Quotations from "@/pages/Quotations";
 import Budget from "@/pages/Budget";
+import DataMigration from "@/pages/DataMigration";
 import Settings from "@/pages/Settings";
 
 function Protected({ children }) {
@@ -44,6 +45,7 @@ function App() {
             <Route path="/sales-forecast" element={<Protected><SalesForecast /></Protected>} />
             <Route path="/quotations" element={<Protected><Quotations /></Protected>} />
             <Route path="/budget" element={<Protected><Budget /></Protected>} />
+            <Route path="/admin/data-migration" element={<Protected><DataMigration /></Protected>} />
             <Route path="/settings" element={<Protected><Settings /></Protected>} />
           </Routes>
           <Toaster position="top-right" />

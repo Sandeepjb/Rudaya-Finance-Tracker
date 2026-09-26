@@ -88,12 +88,14 @@ class TestAuth:
         assert u is not None  # noqa: E711 — PEP 8: use `is` for None comparisons
         assert u["password_hash"].startswith("$2b$")
 
-    def test_brute_force_lockout(self, creds):
-        """Playbook expects lockout after 5 failed attempts."""
+    def test_brute_force_lockout(self):
+        """Playbook expects lockout after 5 failed attempts. Use a distinct email so parallel test workers
+        can't clear the lockout state via a successful admin login."""
         s = requests.Session()
+        target = f"bf-lockout-{os.getpid()}@example.com"
         codes = []
         for _ in range(6):
-            codes.append(s.post(f"{API}/auth/login", json={"email": creds["email"], "password": "Bad!123"}).status_code)
+            codes.append(s.post(f"{API}/auth/login", json={"email": target, "password": "Bad!123"}).status_code)
         assert 423 in codes or 429 in codes, f"no lockout, codes={codes}"
 
     def test_logout_clears_cookie(self, creds):
@@ -107,7 +109,7 @@ class TestAuth:
 
 # --- Reports module ---
 class TestReports:
-    def test_summary_totals(self, client):
+    def test_summary_totals(self, client, txn_state_lock):
         r = client.get(f"{API}/reports/summary")
         assert r.status_code == 200
         d = r.json()
@@ -149,7 +151,7 @@ class TestReports:
 
 # --- Transactions CRUD ---
 class TestTransactions:
-    def test_list_and_no_objectid(self, client):
+    def test_list_and_no_objectid(self, client, txn_state_lock):
         r = client.get(f"{API}/transactions")
         assert r.status_code == 200
         rows = r.json()
@@ -157,7 +159,7 @@ class TestTransactions:
         assert all("_id" not in t for t in rows)
         assert "id" in rows[0]
 
-    def test_filter_type_revenue(self, client):
+    def test_filter_type_revenue(self, client, txn_state_lock):
         r = client.get(f"{API}/transactions", params={"type": "Revenue"})
         assert r.status_code == 200
         rows = r.json()
