@@ -1,0 +1,37 @@
+{
+  "summary": "Frontend-only end-to-end testing of new admin Bank Transactions features (Import Statement, Parsing Templates, Bulk Approve, Ingestion History guide), Transactions Export Excel and Data Migration human-readable headers. All 7 review-request scenarios PASSED end-to-end.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Dashboard", "issues": ["Recurring Recharts warning 'width(-1) and height(-1) of chart should be greater than 0' (also flagged in iteration_7). Pre-existing, non-blocking."]}
+    ]
+  },
+  "test_report_links": [],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "StatementImportTab doPreview({}) hard-resets mapping on Preview click — a Re-apply Mapping button exists but the Preview button ignores current mapping (by design). Fine but non-obvious. Consider a single canonical 'Preview' that uses current mapping and a distinct 'Auto-detect' button.",
+    "BulkApproveBar.approve() uses window.confirm — same UX concern flagged in previous iteration. Consider a shadcn AlertDialog with data-testid for consistency.",
+    "ParsingTemplatesTab tpl-delete uses window.confirm — same pattern. Works but not testable via modal selectors.",
+    "StatementImportTab file-input is truly hidden (input.hidden). set_input_files needs to skip visibility check — worked with playwright but any automated tool asserting element visibility will fail. This is standard for shadcn upload pattern, no code change required.",
+    "DataMigration.jsx csv-file-input is also hidden — same as above."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "not tested (skipped per request)", "frontend": "100%"},
+  "test_credentials": "sandeepjb2014@gmail.com / Rudaya@1246 (admin)",
+  "seed_data_creation": "Ingested 2 bank rows tagged 'QAUI' via Import Statement (ICICI CSV) → both auto-classified → bulk-approved to Finance transactions (ids 6ab7dc4659247b833d547039 and 6ab7dc4659247b833d54703d). Also imported 1 human-header CSV row into Data Migration (skip_duplicates) with Notes='qaui header'. Created + deleted a 'QAUI Bank' parsing template. All test artefacts contain the 'QAUI' string for easy identification.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "New testids used (all present & working): tab-import, tab-templates, tab-history, statement-import-tab, statement-file-input (hidden), statement-choose-btn, statement-preview-btn, statement-mapping, map-{date,narration,debit,credit,amount,direction,reference}, statement-summary, statement-remap-btn, statement-import-btn, statement-preview-table, statement-row, statement-result, statement-bank, statement-account. Parsing templates: parsing-templates-tab, tpl-new, tpl-item-{id}, template-editor, tpl-bank, tpl-name, tpl-priority, tpl-enabled, tpl-pattern-{amount,debit,credit,date,narration,reference,account}, tpl-sample, tpl-test, tpl-test-result, tpl-save, tpl-delete. Bulk approve: bulk-bar, bulk-select-high, bulk-select-all, bulk-clear, bulk-summary, bulk-approve-btn, bulk-report, bulk-result-row, card-select checkbox on pending cards. Ingestion history: guide-toggle, pa-guide, copy-email-endpoint, copy-structured-endpoint, ingestion-row (channel column shows CSV_STATEMENT for CSV imports). Transactions: export-excel-btn (triggers .xlsx download, filename e.g. Rudaya-Finance-Tracker-2026-09-26.xlsx). Data Migration accepts headers 'Date,Type,Account,Amount,Project ID,Notes' with valid=1 invalid=0 (no 'Missing required column'). Bulk-approve dialog uses window.confirm — attach page.once('dialog', d.accept()) before click. AI classification on statement import ran within ~5-8s for 2 rows this run (faster than iteration_7 manual flow).",
+  "verified_scenarios": [
+    "Import Statement CSV with ICICI headers → auto column mapping (map-date=Txn Date) → 2 valid rows preview → import → 2 pending cards visible on Pending tab",
+    "Parsing Templates lists ICICI/HDFC/Saraswat → select ICICI → tpl-test parses ICICI sample with amount 4499.13 debit",
+    "New QAUI Bank template with custom regexes → tpl-test parses INR 500.00 debit correctly → tpl-save appears in list → tpl-delete removes it (window.confirm accepted)",
+    "Bulk approve bar visible on Pending → checkbox-select 2 QAUI cards → bulk-summary '2 selected · ₹74,499' → bulk-approve → confirm dialog → bulk-report shows 2 approved with finance ids",
+    "Ingestion History: guide-toggle opens pa-guide with endpoints/steps; ingestion-row includes 5 CSV_STATEMENT channel rows",
+    "Transactions page: export-excel-btn triggers download 'Rudaya-Finance-Tracker-2026-09-26.xlsx'",
+    "Data Migration accepts 'Date,Type,Account,Amount,Project ID,Notes' header — preview valid=1 invalid=0, row OK, NO 'Missing required column' message"
+  ],
+  "rca of the issue": "N/A — all scenarios passed on first run."
+}

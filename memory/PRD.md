@@ -35,6 +35,14 @@
 - Known limitations: rules keyed on first 2 meaningful tokens; AI latency ~15s on manual ingest; ingestion history unpaginated.
 - Phase 2 (NOT started, awaiting approval): Power Automate → POST /ingest with X-Ingest-Key, source="power_automate", source_message_id=Outlook message id; CSV bank statement import; bank reconciliation.
 
+## Implemented (2026-09-26) — batch 6: Statement CSV, Email templates, Bulk approve, Excel export, CSV header fix
+- `backend/bank_inbox_ext.py` (routes on the bank router, registered before `/{tid}`): `POST /statement/preview|import` (auto bank/column detection ICICI/HDFC/generic, manual mapping override, skips already-ingested fingerprints), `GET/POST/PUT/DELETE /templates`, `POST /templates/test`, `POST /ingest/email` (X-Ingest-Key; regex templates per bank, 422 + failed ingestion log if unparseable), `GET /guide` (Power Automate steps), `POST /bulk-approve` (per-row results, idempotent). `bank_parse_templates` collection seeded with ICICI/HDFC/Saraswat defaults.
+- `backend/excel_export.py`: `GET /api/export/excel` → xlsx with Transactions, Project P&L, Monthly, Sales Forecast, Quotations, Quotation Lines, Expense Budget, Master Data. Button `export-excel-btn` on Transactions page.
+- UI: Bank Transactions tabs Import Statement / Parsing Templates; bulk bar on Pending (checkboxes, Select all ≥90%); PA guide in Ingestion History.
+- Bug fix: `_parse_csv_rows` header normalisation now `"_".join(h.strip().lower().split())` so "Project ID" → project_id (test `tests/test_csv_headers.py`). Bank edit with blank notes falls back to narration.
+- Tests: 100/100 backend (tests now use per-xdist-worker tags + txn_state_lock to avoid cross-worker pollution); frontend iteration_8 all pass. No tabs in any .py.
+- Phase 2 remaining: actual Power Automate flow on the customer tenant (guide provided), Bank Reconciliation module.
+
 ## Backlog / Next
 - P1 (approved for later): Phase 2 Power Automate / SharePoint ingestion; Bank Reconciliation
 - P1: Excel `.xlsx` export mirroring the original template + a Forecast sheet
