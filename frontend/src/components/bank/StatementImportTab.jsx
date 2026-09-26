@@ -21,6 +21,8 @@ export default function StatementImportTab({ onImported }) {
   const [result, setResult] = useState(null);
   const ref = useRef(null);
 
+  const isPdf = file && /\.pdf$/i.test(file.name);
+  const base = isPdf ? "/bank-transactions/statement/pdf" : "/bank-transactions/statement";
   const fd = (extra = {}) => {
     const f = new FormData();
     f.append("file", file); f.append("bank_name", bank); f.append("bank_account", acct);
@@ -34,8 +36,8 @@ export default function StatementImportTab({ onImported }) {
     setBusy(true); setResult(null);
     try {
       const f = fd(); f.set("mapping", JSON.stringify(m));
-      const r = await api.post("/bank-transactions/statement/preview", f);
-      setPreview(r.data); setMapping(r.data.mapping); if (!bank) setBank(r.data.bank_name);
+      const r = await api.post(`${base}/preview`, f);
+      setPreview(r.data); setMapping(r.data.mapping || {}); if (!bank) setBank(r.data.bank_name);
     } catch (e) { toast.error(formatApiError(e.response?.data?.detail)); }
     finally { setBusy(false); }
   };
@@ -43,7 +45,7 @@ export default function StatementImportTab({ onImported }) {
   const doImport = async () => {
     setBusy(true);
     try {
-      const r = await api.post("/bank-transactions/statement/import", fd({ skip_ingested: "true" }));
+      const r = await api.post(`${base}/import`, fd({ skip_ingested: "true" }));
       setResult(r.data);
       toast.success(`Ingested ${r.data.ingested} rows (${r.data.pending} pending, ${r.data.duplicates} duplicates)`);
       onImported?.();
@@ -55,9 +57,9 @@ export default function StatementImportTab({ onImported }) {
     <div className="space-y-4" data-testid="statement-import-tab">
       <div className="bg-white border border-neutral-200 p-4 grid grid-cols-1 md:grid-cols-4 gap-3 items-end">
         <div className="md:col-span-2">
-          <Label className="text-[10px] uppercase tracking-wider text-neutral-500">Statement CSV (ICICI / HDFC / Saraswat / any)</Label>
+          <Label className="text-[10px] uppercase tracking-wider text-neutral-500">Statement CSV or text-based PDF (ICICI / HDFC / Saraswat / any)</Label>
           <div className="mt-1 flex gap-2">
-            <input ref={ref} data-testid="statement-file-input" type="file" accept=".csv,text/csv" className="hidden" onChange={(e) => { setFile(e.target.files?.[0] || null); setPreview(null); setResult(null); setMapping({}); }} />
+            <input ref={ref} data-testid="statement-file-input" type="file" accept=".csv,text/csv,.pdf,application/pdf" className="hidden" onChange={(e) => { setFile(e.target.files?.[0] || null); setPreview(null); setResult(null); setMapping({}); }} />
             <Button data-testid="statement-choose-btn" variant="outline" className="rounded-none" onClick={() => ref.current?.click()}><FileCsv size={16} className="mr-1" /> {file ? file.name : "Choose file"}</Button>
             <Button data-testid="statement-preview-btn" disabled={!file || busy} className="rounded-none bg-neutral-900 hover:bg-neutral-700" onClick={() => doPreview({})}><UploadSimple size={16} className="mr-1" /> Preview</Button>
           </div>
@@ -70,7 +72,8 @@ export default function StatementImportTab({ onImported }) {
         <>
           <div className="bg-white border border-neutral-200 p-4">
             <div className="text-[10px] uppercase tracking-[0.2em] text-neutral-500 mb-2">Column mapping · detected bank: <span className="text-neutral-900">{preview.bank_name}</span></div>
-            <div className="grid grid-cols-2 md:grid-cols-7 gap-2" data-testid="statement-mapping">
+            {isPdf && <div className="text-xs text-neutral-600 mb-2" data-testid="pdf-note">PDF rows detected from extracted text ({preview.pages_text_lines} lines). Scanned/image PDFs are not supported.</div>}
+            {!isPdf && <div className="grid grid-cols-2 md:grid-cols-7 gap-2" data-testid="statement-mapping">
               {FIELDS.map((f) => (
                 <div key={f}>
                   <div className="text-[10px] uppercase text-neutral-500">{f}</div>
@@ -79,7 +82,7 @@ export default function StatementImportTab({ onImported }) {
                   </select>
                 </div>
               ))}
-            </div>
+            </div>}
             <div className="flex items-center justify-between mt-3">
               <div className="text-xs text-neutral-600 flex gap-4" data-testid="statement-summary">
                 <span><CheckCircle size={14} className="inline text-emerald-600" /> {preview.valid} valid</span>
@@ -88,7 +91,7 @@ export default function StatementImportTab({ onImported }) {
                 <span>{preview.total} rows</span>
               </div>
               <div className="flex gap-2">
-                <Button data-testid="statement-remap-btn" variant="outline" className="rounded-none" disabled={busy} onClick={() => doPreview(mapping)}>Re-apply mapping</Button>
+                {!isPdf && <Button data-testid="statement-remap-btn" variant="outline" className="rounded-none" disabled={busy} onClick={() => doPreview(mapping)}>Re-apply mapping</Button>}
                 <Button data-testid="statement-import-btn" disabled={busy || preview.valid - preview.already_ingested <= 0} className="rounded-none bg-emerald-700 hover:bg-emerald-600" onClick={doImport}>Import {preview.valid - preview.already_ingested} rows to Inbox</Button>
               </div>
             </div>

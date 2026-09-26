@@ -16,6 +16,9 @@ import IngestionHistoryTab from "@/components/bank/IngestionHistoryTab";
 import StatementImportTab from "@/components/bank/StatementImportTab";
 import ParsingTemplatesTab from "@/components/bank/ParsingTemplatesTab";
 import BulkApproveBar from "@/components/bank/BulkApproveBar";
+import QueueTab from "@/components/bank/QueueTab";
+import ParserTestTab from "@/components/bank/ParserTestTab";
+import ReconciliationTab from "@/components/bank/ReconciliationTab";
 import { ConfidenceBadge, DirectionBadge, StatusBadge } from "@/components/bank/ConfidenceBadge";
 import { TypeBadge } from "@/components/TypeBadge";
 import { STATUS_TABS, fmtDate } from "@/lib/bankInbox";
@@ -107,6 +110,9 @@ export default function BankTransactions() {
             ))}
             <TabsTrigger value="rules" data-testid="tab-rules" className="rounded-none data-[state=active]:bg-neutral-900 data-[state=active]:text-white text-xs">Mapping Rules</TabsTrigger>
             <TabsTrigger value="import" data-testid="tab-import" className="rounded-none data-[state=active]:bg-neutral-900 data-[state=active]:text-white text-xs">Import Statement</TabsTrigger>
+            <TabsTrigger value="queue" data-testid="tab-queue" className="rounded-none data-[state=active]:bg-neutral-900 data-[state=active]:text-white text-xs">M365 Queue</TabsTrigger>
+            <TabsTrigger value="parsers" data-testid="tab-parsers" className="rounded-none data-[state=active]:bg-neutral-900 data-[state=active]:text-white text-xs">Parser Test</TabsTrigger>
+            <TabsTrigger value="reconciliation" data-testid="tab-reconciliation" className="rounded-none data-[state=active]:bg-neutral-900 data-[state=active]:text-white text-xs">Reconciliation</TabsTrigger>
             <TabsTrigger value="templates" data-testid="tab-templates" className="rounded-none data-[state=active]:bg-neutral-900 data-[state=active]:text-white text-xs">Parsing Templates</TabsTrigger>
             <TabsTrigger value="history" data-testid="tab-history" className="rounded-none data-[state=active]:bg-neutral-900 data-[state=active]:text-white text-xs">Ingestion History</TabsTrigger>
           </TabsList>
@@ -134,6 +140,9 @@ export default function BankTransactions() {
         <TabsContent value="rules" className="mt-4"><MappingRulesTab meta={meta} /></TabsContent>
         <TabsContent value="import" className="mt-4"><StatementImportTab onImported={load} /></TabsContent>
         <TabsContent value="templates" className="mt-4"><ParsingTemplatesTab /></TabsContent>
+        <TabsContent value="queue" className="mt-4"><QueueTab /></TabsContent>
+        <TabsContent value="parsers" className="mt-4"><ParserTestTab /></TabsContent>
+        <TabsContent value="reconciliation" className="mt-4"><ReconciliationTab /></TabsContent>
         <TabsContent value="history" className="mt-4"><IngestionHistoryTab /></TabsContent>
       </Tabs>
 

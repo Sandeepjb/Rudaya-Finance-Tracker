@@ -381,8 +381,9 @@ async def require_ingest_key(x_ingest_key: Optional[str] = Header(None)):
     expected = os.environ.get("BANK_INGEST_API_KEY")
     if not expected:
         raise HTTPException(503, "Ingestion not configured")
-    if not x_ingest_key or not hashlib.sha256(x_ingest_key.encode()).hexdigest() == hashlib.sha256(expected.encode()).hexdigest():
-        raise HTTPException(401, "Invalid ingestion key")
+    import hmac
+    if not x_ingest_key or not hmac.compare_digest(x_ingest_key.encode(), expected.encode()):
+        raise HTTPException(401, "Unauthorized")
     return "integration"
 
 
@@ -518,6 +519,7 @@ async def _pending_or_400(tid: str) -> dict:
 
 
 import bank_inbox_ext  # noqa: E402,F401  literal routes must register before /{tid}
+import bank_inbox_phase2  # noqa: E402,F401
 
 
 # ---------- single txn ----------
@@ -629,3 +631,9 @@ async def ensure_indexes():
     await db.bank_parse_templates.create_index([("bank_name", 1), ("priority", 1)])
     from bank_inbox_ext import seed_templates
     await seed_templates()
+    from bank_inbox_phase2 import ensure_phase2_indexes
+    await ensure_phase2_indexes()
+    await db.bank_transactions.update_many({"status": "approved", "finance_transaction_id": {"$ne": None},
+                                            "reconciliation_status": {"$in": [None, "unmatched"]}},
+                                           {"$set": {"reconciliation_status": "matched",
+                                                     "reconciliation": {"method": "auto_link_backfill"}}})
