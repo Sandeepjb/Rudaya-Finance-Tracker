@@ -45,9 +45,9 @@ def saraswat_csv(tag, with_total=True, ambiguous=False):
     rows = [
         "Date,Dr Amount,Cr Amount,Total Amount,Particulars,Instruments",
         f'01-04-2025,,"336,654.00","930,345.31 CR",NEFT/N091250123/GOODYEAR INDIA {tag},',
-        f'02-04-2025,"24,000.00",,"906,345.31 CR",IB/NEFT/handewadi project {tag},NEFT0001',
+        f'02-04-2025,"24,000.00",,"906,345.31 CR",IB/NEFT/handewadi project {tag},NEFT{tag}',
         f'03-04-2025,4.94,,"906,340.37 CR",SMS CHARGES {tag},',
-        f'05-04-2025,,"1,740,399.71","2,646,740.08 CR",RTGS/FORD CHENNAI {tag},RTGS777',
+        f'05-04-2025,,"1,740,399.71","2,646,740.08 CR",RTGS/FORD CHENNAI {tag},RTGS{tag}',
         f'06-04-2025,"500,000.00",,"2,146,740.08 CR",TRF TO OWN ACCOUNT HDFC {tag},',
     ]
     if ambiguous:
@@ -93,7 +93,7 @@ class TestSaraswatStatementCsv:
         assert p["total"] == 5 and p["valid"] == 5 and p["needs_review"] == 0, p["rows"]
         by = {r["row"]: r for r in p["rows"]}
         assert by[1]["txn"]["direction"] == "credit" and by[1]["txn"]["amount"] == 336654.0 and by[1]["running_balance"] == 930345.31
-        assert by[2]["txn"]["direction"] == "debit" and by[2]["txn"]["amount"] == 24000.0 and by[2]["txn"]["bank_reference"] == "NEFT0001"
+        assert by[2]["txn"]["direction"] == "debit" and by[2]["txn"]["amount"] == 24000.0 and by[2]["txn"]["bank_reference"] == f"NEFT{t}"
         assert by[3]["txn"]["amount"] == 4.94 and by[4]["txn"]["amount"] == 1740399.71
         for r in p["rows"]:
             assert r["txn"]["amount"] != r["running_balance"], "Total Amount must never be the transaction amount"

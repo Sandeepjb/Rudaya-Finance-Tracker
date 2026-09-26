@@ -53,6 +53,12 @@
 - Tests: 120/120 backend (`tests/test_bank_phase2.py` 20 tests), frontend iteration_9.
 - Not done (by design): configuring M365/Power Automate/SharePoint; OCR for scanned PDFs; bank-specific parser refinement pending real samples.
 
+## Implemented (2026-09-26) — batch 8: Saraswat statement structure fix
+- `bank_parsers/statement.py` (new, shared by CSV+PDF): header normalisation (trim/lower/collapse/punctuation/line-breaks), alias map → date / debit_amount / credit_amount / running_balance / amount / direction / narration / bank_reference; Decimal-safe amount parsing; Dr/Cr mutually exclusive rule; "Total Amount" = running balance (never the amount); balance_direction CR/DR; totals report (statement vs parsed debit/credit, differences, warnings); footer "Total" row detection.
+- `bank_parsers/saraswat.py` v1.1: knows Date|Dr|Cr|Total|Particulars|Instruments; PDF line parser confirms direction via running-balance delta — unconfirmed/ambiguous rows → Needs Parsing Review (never positional guessing). Generic PDF rows likewise require balance confirmation.
+- Preview/import responses now include needs_review, totals{}, per-row parsed_debit/credit, running_balance, balance_direction, parse_confidence, warnings, raw_row/raw_text/source_page. UI shows totals block, differences, warning banner, Balance column, Needs Parsing Review rows. Mapping keys renamed (debit_amount/credit_amount/bank_reference; legacy keys accepted).
+- Tests: `tests/test_saraswat_statement.py` (7) — full suite 130/130; frontend+backend iteration_10 pass. Compile OK, no tabs.
+
 ## Backlog / Next
 - P1 (approved for later): Phase 2 Power Automate / SharePoint ingestion; Bank Reconciliation
 - P1: Excel `.xlsx` export mirroring the original template + a Forecast sheet

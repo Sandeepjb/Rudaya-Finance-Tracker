@@ -320,15 +320,17 @@ class TestPdfStatement:
                     f"14-05-2026 14-05-2026 ATM WDL {t}AIRPORT 2,000.00 168,000.00"])
         p = admin.post(f"{BT}/statement/pdf/preview", files={"file": ("s.pdf", io.BytesIO(raw), "application/pdf")}).json()
         assert p["bank_name"] == "ICICI Bank" and p["bank_account_masked"].endswith("2345")
-        assert p["total"] == 3 and p["valid"] == 3, p
+        # first row has no opening balance to confirm direction → Needs Parsing Review (never silently assigned)
+        assert p["total"] == 3 and p["valid"] == 2 and p["needs_review"] == 1, p
         rows = p["rows"]
-        assert rows[0]["txn"]["amount"] == 4499.13 and rows[0]["txn"]["direction"] == "debit"
-        assert rows[1]["txn"]["amount"] == 70000 and rows[1]["txn"]["direction"] == "credit"
-        assert rows[2]["txn"]["direction"] == "debit" and rows[2]["txn"]["transaction_date"] == "2026-05-14"
+        assert rows[0]["txn"]["amount"] == 4499.13 and rows[0]["needs_review"] and "ambiguous" in rows[0]["errors"][0]
+        assert rows[1]["txn"]["amount"] == 70000 and rows[1]["txn"]["direction"] == "credit"  # balance +70,000 confirms
+        assert rows[2]["txn"]["direction"] == "debit" and rows[2]["txn"]["transaction_date"] == "2026-05-14"  # balance -2,000
+        assert "totals" in p and p["totals"]["parsed_credit_total"] == 70000.0
         imp = admin.post(f"{BT}/statement/pdf/import", files={"file": ("s.pdf", io.BytesIO(raw), "application/pdf")}).json()
-        assert imp["ingested"] == 3 and imp["pending"] == 3
+        assert imp["ingested"] == 2 and imp["pending"] == 2
         again = admin.post(f"{BT}/statement/pdf/import", files={"file": ("s.pdf", io.BytesIO(raw), "application/pdf")}).json()
-        assert again["ingested"] == 0 and again["skipped_already_ingested"] == 3
+        assert again["ingested"] == 0 and again["skipped_already_ingested"] == 2
         assert any(x["channel"] == "pdf_statement" for x in admin.get(f"{BT}/ingestion-history").json())
 
     def test_pdf_rejections(self, admin):

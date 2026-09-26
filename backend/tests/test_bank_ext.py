@@ -87,7 +87,7 @@ class TestStatementCsv:
         p = _upload(admin, "preview", ICICI_CSV.format(t=t, r=r)).json()
         assert p["bank_name"] == "ICICI Bank"
         assert p["mapping"]["date"] == "Txn Date" and p["mapping"]["narration"] == "Transaction Remarks"
-        assert p["mapping"]["debit"].startswith("Withdrawal") and p["mapping"]["credit"].startswith("Deposit")
+        assert p["mapping"]["debit_amount"].startswith("Withdrawal") and p["mapping"]["credit_amount"].startswith("Deposit")
         assert p["total"] == 4 and p["valid"] == 2 and p["invalid"] == 2
         rows = {x["row"]: x for x in p["rows"]}
         assert rows[1]["txn"]["direction"] == "debit" and rows[1]["txn"]["amount"] == 4499.13

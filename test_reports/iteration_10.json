@@ -1,0 +1,42 @@
+{
+  "summary": "Bug-fix verification: Saraswat Bank statement parser correctly maps Dr Amount/Cr Amount/Total Amount (running balance). Both backend (pytest 3/3 passed) and frontend (Playwright end-to-end) scenarios in the review request PASSED. Regression on ICICI-style headers also passes.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_saraswat_bugfix_verify.py",
+    "/app/backend/tests/test_saraswat_statement.py",
+    "/app/test_reports/pytest/saraswat_bugfix.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "StatementImportTab: statement-import-btn label 'Import 3 rows to Inbox' reads {preview.valid - preview.already_ingested} but preview.valid already excludes needs_review — good; however the toast on success reads 'Ingested 3 rows (3 pending, 0 duplicates)' while the invalid ambiguous row silently disappears from the count. Consider surfacing '+1 skipped as invalid' in the toast for parity with statement-result panel.",
+    "bank_parsers/statement.HEADER_ALIASES: 'total amount' is included as an alias for running_balance — this is correct for Saraswat but fragile. Any bank that names their transaction amount column literally 'Total Amount' would be misclassified. Consider bank-specific overrides via detect_mapping keyed by bank_name once auto-detected.",
+    "Saraswat CSV footer 'Total' row: parser correctly extracts statement totals but still shows as 'total: 4 rows / 3 valid / 1 invalid' — the invalid count in the summary bar includes the ambiguous row. UX-wise, distinguishing 'invalid (parse error)' vs 'needs review (ambiguous)' would help; currently statement-summary shows both invalid=1 AND needs_review=1 for the same row, which is potentially confusing."
+  ],
+  "updated_files": ["/app/backend/tests/test_saraswat_bugfix_verify.py"],
+  "success_rate": {"backend": "100% (3/3)", "frontend": "100% (all review scenarios)"},
+  "test_credentials": "sandeepjb2014@gmail.com / Rudaya@1246 (admin)",
+  "seed_data_creation": "QASV-tagged rows ingested via UI (GOODYEAR credit, handewadi debit, SMS CHARGES debit) went to Pending inbox. Cleanup fixture in test_saraswat_bugfix_verify.py removes narration ~/QASV/ after test module. NOTE: The frontend UI test seeded 3 QASVUI pending items that are NOT cleaned up by pytest fixture (different tag); main agent may want to purge via `db.bank_transactions.delete_many({'narration': {'$regex': 'QASVUI'}})` and `db.bank_inbox_messages.delete_many({'narration': {'$regex': 'QASVUI'}})`.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Bug fix verified end-to-end. Test file /app/backend/tests/test_saraswat_bugfix_verify.py covers: (1) preview mapping + row-level assertions from the review CSV, (2) totals with debit_difference=100.0 and non-empty warnings, (3) import goes to Pending inbox only (no finance posting), (4) ICICI-style regression. Frontend testids used: statement-file-input, statement-preview-btn, statement-mapping, map-debit_amount/credit_amount/running_balance, statement-totals, debit-difference, statement-totals-warning, statement-needs-review, statement-row, row-needs-review, statement-import-btn, statement-result. Login testids: login-email-input, login-password-input, login-submit-button. Tab testid: tab-import, tab-pending.",
+  "verified_scenarios": [
+    "Backend preview: bank_name=Saraswat Bank; mapping{debit_amount:'Dr Amount', credit_amount:'Cr Amount', running_balance:'Total Amount', narration:'Particulars', bank_reference:'Instruments'}",
+    "Row 1: credit 336654.0, running_balance 930345.31, balance_direction CR",
+    "Row 2: debit 24000.0, bank_reference NEFT0001",
+    "Row 3: debit 4.94",
+    "Row 4: needs_review=true with error 'both Dr and Cr amounts present — ambiguous'",
+    "No row has amount == running_balance",
+    "totals.parsed_debit_total=24004.94, statement_debit_total=24104.94, debit_difference=100.0, credit_difference=0.0, warnings non-empty",
+    "Backend import: ingested=3, invalid=1, all results have finance_transaction_id=None and status=pending; no QASV in /api/transactions",
+    "Frontend: mapping selects show Dr Amount/Cr Amount/Total Amount; debit-difference '₹100' with class text-red-700; statement-totals-warning visible; statement-needs-review '1 needs parsing review'; row-needs-review shows 'both Dr and Cr amounts present — ambiguous'; Balance column shows '₹9,30,345 CR' etc.",
+    "Frontend import: statement-result 'Imported 3 of 4 rows from Saraswat Bank: 3 pending review, 0 duplicates, 1 invalid'; Pending tab has GOODYEAR (CREDIT), handewadi (DEBIT), SMS CHARGES (DEBIT) cards each with a suggested classification",
+    "Transactions page contains ZERO QASVUI entries — parser correctly never posts to Finance",
+    "Regression: ICICI CSV (Withdrawal Amount (INR)/Deposit Amount (INR)/Balance) previews with correct debit/credit/balance mapping"
+  ],
+  "rca of the issue": "N/A — this was a bug-fix verification, not an active bug. Prior fix (Saraswat parser + statement.HEADER_ALIASES adding 'total amount' -> running_balance, plus ambiguous Dr+Cr detection) is confirmed working end-to-end."
+}
