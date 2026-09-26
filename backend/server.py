@@ -1277,8 +1277,15 @@ async def preview_import(file: UploadFile = File(...), user: dict = Depends(requ
     if header_error:
         raise HTTPException(status_code=400, detail=header_error)
     fps = await _existing_fingerprints()
+    seen: set = set()
     for r in rows:
-        r["duplicate"] = bool(r["valid"] and r["fingerprint"] in fps)
+        if not r["valid"]:
+            r["duplicate"] = False
+            continue
+        fp = r["fingerprint"]
+        # A row is a duplicate if it already exists in DB OR appeared earlier in this file.
+        r["duplicate"] = fp in fps or fp in seen
+        seen.add(fp)
     summary = _summarize(rows)
     return {
         "filename": file.filename,
