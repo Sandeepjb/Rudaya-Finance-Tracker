@@ -1,0 +1,28 @@
+{
+  "summary": "Frontend-only smoke of the 3 P2 features on Rudaya Powers Finance Tracker. All three flows (Project Drilldown drawer, Copy Last Year Forecast, Backup P&L Impact) work end-to-end. Regression: all listed routes load without console errors (only pre-existing 'no routes matched' warnings for a couple of sidebar links that use different paths).",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Sales Forecast / Copy Last Year dialog", "issues": ["Target-year select options render labels like '2027 (from 2026)' and '2027 (from 2027)' — two options carry the same visible text prefix 2027, only differing in the suffix. This breaks accessible-name uniqueness and made get_by_role('option', name='2027') ambiguous in tests. Recommend using distinct values, e.g. '2027' and '2027 (self)' or hide the '(from 2027)' entry entirely."]}
+    ]
+  },
+  "test_report_links": [],
+  "action_items": [
+    "Minor: dedupe/rename ambiguous year options in CopyLastYearDialog target-year select so each option has a unique visible label (helps a11y and test selection).",
+    "Pre-existing (not this iteration): react-router warnings 'No routes matched location \"/dashboard\" | \"/forecast-vs-actual\" | \"/expense-budget\"' — the sidebar navigates to /dashboard etc. but router likely mounts them at /. Consider aligning route paths."
+  ],
+  "critical_code_review_comments": [
+    "ProjectDetailDrawer renders Recharts inside a Sheet — verified visible at 1920 viewport. Cost bar chart appeared correctly.",
+    "BackupsTab: preview button uses testid `backup-view-{stamp}` (not `backup-preview-{stamp}`). Task description referred to it as 'Preview' — testid name is fine but the mismatch tripped my first selector; documented so next agents use `backup-view-*`."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "not tested (skipped per request)", "frontend": "100%"},
+  "test_credentials": "sandeepjb2014@gmail.com / Rudaya@1246 (admin)",
+  "seed_data_creation": "None. Existing 9 backup snapshots and 12 project rows were used.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Verified testids: project-row-{id}, project-detail-drawer, pd-project-id, pd-total-revenue/cost/expense/net, pd-year-select, pd-tab-forecast/transactions/quotations, pd-forecast-table, pd-transactions-table, pd-quotations-table, copy-last-year-btn, copy-last-year-dialog, copy-target-year, copy-quotations-toggle, copy-overwrite-toggle, copy-run-btn, tab-backups, backup-impact-{stamp}, backup-view-{stamp} (row preview trigger), backup-preview-dialog, backup-preview-impact-merge, backup-preview-impact-full, dryrun-dialog. Confirmed dryrun-dialog header shows 'RESTORE MERGE' or 'RESTORE FULL' based on chosen mode. Copy-Last-Year target-year options overlap on label '2027' — use option value or index rather than name-based selectors.",
+  "rca of the issue": "N/A — no functional bugs found."
+}
