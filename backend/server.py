@@ -469,14 +469,25 @@ async def list_transactions(
     return [txn_out(d) for d in docs]
 
 
-@api_router.post("/transactions")
-async def create_transaction(payload: TransactionIn, user: dict = Depends(get_current_user)):
-    doc = payload.model_dump()
+async def insert_finance_transaction(payload: dict, user_email: str, source: str = "manual", extra: dict = None) -> dict:
+    """Single validated write path for manual, AI-approved and bank-inbox transactions."""
+    doc = TransactionIn(**payload).model_dump()
+    if doc["type"] not in ("Revenue", "Cost", "Expense"):
+        raise HTTPException(422, "type must be Revenue, Cost or Expense")
+    if doc["amount"] <= 0:
+        raise HTTPException(422, "amount must be greater than 0")
     doc["created_at"] = datetime.now(timezone.utc).isoformat()
-    doc["created_by"] = user["email"]
+    doc["created_by"] = user_email
+    doc["source"] = source
+    doc.update(extra or {})
     result = await db.transactions.insert_one(doc)
     doc["_id"] = result.inserted_id
     return txn_out(doc)
+
+
+@api_router.post("/transactions")
+async def create_transaction(payload: TransactionIn, user: dict = Depends(get_current_user)):
+    return await insert_finance_transaction(payload.model_dump(), user["email"], "manual")
 
 
 @api_router.put("/transactions/{txn_id}")
@@ -1371,12 +1382,8 @@ async def list_pending(user: dict = Depends(get_current_user), status: Optional[
 async def _apply_pending(doc: dict, user: dict) -> dict:
     kind, data = doc["kind"], doc["data"]
     if kind == "transaction":
-        payload = TransactionIn(**data).model_dump()
-        payload["created_at"] = datetime.now(timezone.utc).isoformat()
-        payload["created_by"] = user["email"]
-        payload["source"] = "ai_approved"
-        r = await db.transactions.insert_one(payload)
-        return {"kind": "transaction", "id": str(r.inserted_id)}
+        r = await insert_finance_transaction(data, user["email"], "ai_approved")
+        return {"kind": "transaction", "id": r["id"]}
     if kind == "sales_forecast":
         payload = SalesForecastIn(**data).model_dump()
         if payload["month"] < 1 or payload["month"] > 12:
@@ -2192,6 +2199,7 @@ async def startup():
     except Exception as e:
         logger.warning(f"Object storage init failed at startup — attachments will retry on first upload: {e}")
     await seed_all()
+    await bank_inbox.ensure_indexes()
 
 
 @app.on_event("shutdown")
@@ -2200,6 +2208,9 @@ async def shutdown_db_client():
 
 
 app.include_router(api_router)
+
+import bank_inbox  # noqa: E402  (imports names defined above)
+app.include_router(bank_inbox.router)
 
 app.add_middleware(
     CORSMiddleware,

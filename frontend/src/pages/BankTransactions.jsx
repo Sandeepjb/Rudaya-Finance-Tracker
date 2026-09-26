@@ -1,0 +1,136 @@
+import React, { useCallback, useEffect, useState } from "react";
+import Layout from "@/components/Layout";
+import { api, inr } from "@/lib/api";
+import { useAuth } from "@/lib/auth";
+import { Button } from "@/components/ui/button";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Plus, SquaresFour, ListBullets } from "@phosphor-icons/react";
+import BankTxnCard from "@/components/bank/BankTxnCard";
+import BankFilters, { EMPTY_FILTERS, filtersToParams } from "@/components/bank/BankFilters";
+import BankEditDialog from "@/components/bank/BankEditDialog";
+import ExplainDialog from "@/components/bank/ExplainDialog";
+import AuditDialog from "@/components/bank/AuditDialog";
+import ManualBankTxnDialog from "@/components/bank/ManualBankTxnDialog";
+import MappingRulesTab from "@/components/bank/MappingRulesTab";
+import IngestionHistoryTab from "@/components/bank/IngestionHistoryTab";
+import { ConfidenceBadge, DirectionBadge, StatusBadge } from "@/components/bank/ConfidenceBadge";
+import { TypeBadge } from "@/components/TypeBadge";
+import { STATUS_TABS, fmtDate } from "@/lib/bankInbox";
+
+function TableView({ rows, onSelect }) {
+  return (
+    <div className="bg-white border border-neutral-200 overflow-auto" data-testid="bank-table-view">
+      <table className="w-full text-sm">
+        <thead className="bg-neutral-50 text-[10px] uppercase tracking-wider text-neutral-500">
+          <tr><th className="text-left p-2">Date</th><th className="text-left p-2">Bank</th><th className="text-left p-2">Dir</th><th className="text-right p-2">Amount</th><th className="text-left p-2">Narration</th><th className="text-left p-2">Suggested</th><th className="text-left p-2">Confidence</th><th className="text-left p-2">Status</th></tr>
+        </thead>
+        <tbody>
+          {rows.map((t) => (
+            <tr key={t.id} className="border-t border-neutral-100 hover:bg-neutral-50 cursor-pointer" onClick={() => onSelect(t)} data-testid={`bank-table-row-${t.id}`}>
+              <td className="p-2 font-mono-tab text-xs">{fmtDate(t.transaction_date)}</td>
+              <td className="p-2 text-xs">{t.bank_name}</td>
+              <td className="p-2"><DirectionBadge direction={t.direction} /></td>
+              <td className="p-2 text-right font-mono-tab">{inr(t.amount)}</td>
+              <td className="p-2 text-xs max-w-[260px] truncate" title={t.narration}>{t.narration}</td>
+              <td className="p-2 text-xs">{t.suggestion?.type && <TypeBadge type={(t.final || t.user_edits || t.suggestion).type} />} {(t.final || t.user_edits || t.suggestion)?.account} · <span className="font-mono-tab">{(t.final || t.user_edits || t.suggestion)?.project_id}</span></td>
+              <td className="p-2"><ConfidenceBadge value={t.suggestion?.confidence} showBar={false} /></td>
+              <td className="p-2"><StatusBadge status={t.status} /></td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+export default function BankTransactions() {
+  const { user } = useAuth();
+  const isAdmin = user?.role === "admin";
+  const [tab, setTab] = useState("pending");
+  const [rows, setRows] = useState([]);
+  const [stats, setStats] = useState({});
+  const [meta, setMeta] = useState(null);
+  const [filters, setFilters] = useState(EMPTY_FILTERS);
+  const [view, setView] = useState("cards");
+  const [loading, setLoading] = useState(false);
+  const [editTxn, setEditTxn] = useState(null);
+  const [explainTxn, setExplainTxn] = useState(null);
+  const [auditTxn, setAuditTxn] = useState(null);
+  const [manualOpen, setManualOpen] = useState(false);
+
+  const load = useCallback(async () => {
+    if (!isAdmin) return;
+    setLoading(true);
+    try {
+      const status = STATUS_TABS.some((t) => t.key === tab) ? tab : "all";
+      const [r, s] = await Promise.all([
+        api.get("/bank-transactions", { params: { status, ...filtersToParams(filters) } }),
+        api.get("/bank-transactions/stats"),
+      ]);
+      setRows(r.data); setStats(s.data);
+    } catch { /* ignore */ } finally { setLoading(false); }
+  }, [isAdmin, tab, filters]);
+
+  useEffect(() => { load(); }, [load]);
+  useEffect(() => { api.get("/meta").then((r) => setMeta(r.data)).catch(() => {}); }, []);
+
+  if (!isAdmin) {
+    return (
+      <Layout title="Bank Transactions" subtitle="Bank Transaction Inbox">
+        <div className="bg-white border border-neutral-200 p-8 text-center text-neutral-600" data-testid="bank-admin-only">Bank transactions are restricted to administrators.</div>
+      </Layout>
+    );
+  }
+
+  const showList = STATUS_TABS.some((t) => t.key === tab);
+
+  return (
+    <Layout
+      title="Bank Transactions"
+      subtitle="AI-assisted inbox · human-in-the-loop approval · nothing posts without you"
+      actions={
+        <Button data-testid="manual-bank-btn" onClick={() => setManualOpen(true)} className="rounded-none bg-neutral-900 hover:bg-neutral-700"><Plus size={16} className="mr-1" /> Manual Bank Transaction</Button>
+      }
+    >
+      <Tabs value={tab} onValueChange={setTab}>
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <TabsList className="rounded-none bg-white border border-neutral-200 h-auto p-1 flex-wrap">
+            {STATUS_TABS.map((t) => (
+              <TabsTrigger key={t.key} value={t.key} data-testid={`tab-${t.key}`} className="rounded-none data-[state=active]:bg-neutral-900 data-[state=active]:text-white text-xs">
+                {t.label} <span className="ml-1.5 font-mono-tab text-[10px] opacity-70">{stats[t.key] ?? 0}</span>
+              </TabsTrigger>
+            ))}
+            <TabsTrigger value="rules" data-testid="tab-rules" className="rounded-none data-[state=active]:bg-neutral-900 data-[state=active]:text-white text-xs">Mapping Rules</TabsTrigger>
+            <TabsTrigger value="history" data-testid="tab-history" className="rounded-none data-[state=active]:bg-neutral-900 data-[state=active]:text-white text-xs">Ingestion History</TabsTrigger>
+          </TabsList>
+          {showList && (
+            <div className="flex border border-neutral-200 bg-white">
+              <button data-testid="view-cards" onClick={() => setView("cards")} className={`p-2 ${view === "cards" ? "bg-neutral-900 text-white" : "text-neutral-600"}`}><SquaresFour size={16} /></button>
+              <button data-testid="view-table" onClick={() => setView("table")} className={`p-2 ${view === "table" ? "bg-neutral-900 text-white" : "text-neutral-600"}`}><ListBullets size={16} /></button>
+            </div>
+          )}
+        </div>
+
+        {STATUS_TABS.map((t) => (
+          <TabsContent key={t.key} value={t.key} className="mt-4 space-y-4">
+            <BankFilters f={filters} setF={setFilters} meta={meta} onReset={() => setFilters(EMPTY_FILTERS)} />
+            {loading && <div className="text-sm text-neutral-500" data-testid="bank-loading">Loading…</div>}
+            {!loading && !rows.length && <div className="bg-white border border-neutral-200 p-10 text-center text-neutral-500 text-sm" data-testid="bank-empty">No {t.key === "all" ? "" : t.key} bank transactions.</div>}
+            {!loading && rows.length > 0 && (view === "cards" ? (
+              <div className="grid grid-cols-1 xl:grid-cols-2 gap-4" data-testid="bank-card-grid">
+                {rows.map((x) => <BankTxnCard key={x.id} txn={x} onChanged={load} onEdit={setEditTxn} onExplain={setExplainTxn} onAudit={setAuditTxn} />)}
+              </div>
+            ) : <TableView rows={rows} onSelect={setExplainTxn} />)}
+          </TabsContent>
+        ))}
+        <TabsContent value="rules" className="mt-4"><MappingRulesTab meta={meta} /></TabsContent>
+        <TabsContent value="history" className="mt-4"><IngestionHistoryTab /></TabsContent>
+      </Tabs>
+
+      <BankEditDialog txn={editTxn} meta={meta} open={!!editTxn} onOpenChange={(o) => !o && setEditTxn(null)} onSaved={load} />
+      <ExplainDialog txn={explainTxn} open={!!explainTxn} onOpenChange={(o) => !o && setExplainTxn(null)} />
+      <AuditDialog txn={auditTxn} open={!!auditTxn} onOpenChange={(o) => !o && setAuditTxn(null)} />
+      <ManualBankTxnDialog open={manualOpen} onOpenChange={setManualOpen} onCreated={() => { setTab("pending"); load(); }} />
+    </Layout>
+  );
+}

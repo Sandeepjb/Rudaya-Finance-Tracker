@@ -14,6 +14,7 @@ import Quotations from "@/pages/Quotations";
 import Budget from "@/pages/Budget";
 import DataMigration from "@/pages/DataMigration";
 import Settings from "@/pages/Settings";
+import BankTransactions from "@/pages/BankTransactions";
 
 function Protected({ children }) {
   const { user } = useAuth();
@@ -46,6 +47,7 @@ function App() {
             <Route path="/quotations" element={<Protected><Quotations /></Protected>} />
             <Route path="/budget" element={<Protected><Budget /></Protected>} />
             <Route path="/admin/data-migration" element={<Protected><DataMigration /></Protected>} />
+            <Route path="/bank-transactions" element={<Protected><BankTransactions /></Protected>} />
             <Route path="/settings" element={<Protected><Settings /></Protected>} />
           </Routes>
           <Toaster position="top-right" />

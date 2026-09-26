@@ -1,11 +1,12 @@
 import React from "react";
 import { NavLink, useNavigate } from "react-router-dom";
 import { useAuth } from "@/lib/auth";
-import { ChartBar, ListChecks, Buildings, Calendar, SignOut, Gear, Target, ChartPieSlice, FileText, Wallet, Database } from "@phosphor-icons/react";
+import { ChartBar, ListChecks, Buildings, Calendar, SignOut, Gear, Target, ChartPieSlice, FileText, Wallet, Database, Bank } from "@phosphor-icons/react";
 
 const items = [
   { to: "/", label: "Dashboard", icon: ChartBar, testid: "nav-dashboard" },
   { to: "/transactions", label: "Transactions", icon: ListChecks, testid: "nav-transactions" },
+  { to: "/bank-transactions", label: "Bank Transactions", icon: Bank, testid: "nav-bank-transactions", adminOnly: true },
   { to: "/quotations", label: "Quotations", icon: FileText, testid: "nav-quotations" },
   { to: "/sales-forecast", label: "Sales Forecast", icon: Target, testid: "nav-sales-forecast" },
   { to: "/forecast", label: "Forecast vs Actual", icon: ChartPieSlice, testid: "nav-forecast" },
@@ -34,7 +35,7 @@ export default function Sidebar() {
         <div className="text-[10px] uppercase tracking-[0.2em] text-neutral-500 mt-2">Finance Tracker</div>
       </div>
       <nav className="flex-1 py-4 overflow-y-auto">
-        {items.map((it) => (
+        {items.filter((it) => !it.adminOnly || user?.role === "admin").map((it) => (
           <NavLink
             key={it.to}
             to={it.to}
