@@ -13,6 +13,9 @@ import AuditDialog from "@/components/bank/AuditDialog";
 import ManualBankTxnDialog from "@/components/bank/ManualBankTxnDialog";
 import MappingRulesTab from "@/components/bank/MappingRulesTab";
 import IngestionHistoryTab from "@/components/bank/IngestionHistoryTab";
+import StatementImportTab from "@/components/bank/StatementImportTab";
+import ParsingTemplatesTab from "@/components/bank/ParsingTemplatesTab";
+import BulkApproveBar from "@/components/bank/BulkApproveBar";
 import { ConfidenceBadge, DirectionBadge, StatusBadge } from "@/components/bank/ConfidenceBadge";
 import { TypeBadge } from "@/components/TypeBadge";
 import { STATUS_TABS, fmtDate } from "@/lib/bankInbox";
@@ -57,6 +60,8 @@ export default function BankTransactions() {
   const [explainTxn, setExplainTxn] = useState(null);
   const [auditTxn, setAuditTxn] = useState(null);
   const [manualOpen, setManualOpen] = useState(false);
+  const [selected, setSelected] = useState(new Set());
+  const toggle = (id) => setSelected((s) => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
 
   const load = useCallback(async () => {
     if (!isAdmin) return;
@@ -101,6 +106,8 @@ export default function BankTransactions() {
               </TabsTrigger>
             ))}
             <TabsTrigger value="rules" data-testid="tab-rules" className="rounded-none data-[state=active]:bg-neutral-900 data-[state=active]:text-white text-xs">Mapping Rules</TabsTrigger>
+            <TabsTrigger value="import" data-testid="tab-import" className="rounded-none data-[state=active]:bg-neutral-900 data-[state=active]:text-white text-xs">Import Statement</TabsTrigger>
+            <TabsTrigger value="templates" data-testid="tab-templates" className="rounded-none data-[state=active]:bg-neutral-900 data-[state=active]:text-white text-xs">Parsing Templates</TabsTrigger>
             <TabsTrigger value="history" data-testid="tab-history" className="rounded-none data-[state=active]:bg-neutral-900 data-[state=active]:text-white text-xs">Ingestion History</TabsTrigger>
           </TabsList>
           {showList && (
@@ -114,16 +121,19 @@ export default function BankTransactions() {
         {STATUS_TABS.map((t) => (
           <TabsContent key={t.key} value={t.key} className="mt-4 space-y-4">
             <BankFilters f={filters} setF={setFilters} meta={meta} onReset={() => setFilters(EMPTY_FILTERS)} />
+            {t.key === "pending" && rows.length > 0 && <BulkApproveBar rows={rows} selected={selected} setSelected={setSelected} onDone={load} />}
             {loading && <div className="text-sm text-neutral-500" data-testid="bank-loading">Loading…</div>}
             {!loading && !rows.length && <div className="bg-white border border-neutral-200 p-10 text-center text-neutral-500 text-sm" data-testid="bank-empty">No {t.key === "all" ? "" : t.key} bank transactions.</div>}
             {!loading && rows.length > 0 && (view === "cards" ? (
               <div className="grid grid-cols-1 xl:grid-cols-2 gap-4" data-testid="bank-card-grid">
-                {rows.map((x) => <BankTxnCard key={x.id} txn={x} onChanged={load} onEdit={setEditTxn} onExplain={setExplainTxn} onAudit={setAuditTxn} />)}
+                {rows.map((x) => <BankTxnCard key={x.id} txn={x} onChanged={load} onEdit={setEditTxn} onExplain={setExplainTxn} onAudit={setAuditTxn} selectable={t.key === "pending"} selected={selected.has(x.id)} onToggle={toggle} />)}
               </div>
             ) : <TableView rows={rows} onSelect={setExplainTxn} />)}
           </TabsContent>
         ))}
         <TabsContent value="rules" className="mt-4"><MappingRulesTab meta={meta} /></TabsContent>
+        <TabsContent value="import" className="mt-4"><StatementImportTab onImported={load} /></TabsContent>
+        <TabsContent value="templates" className="mt-4"><ParsingTemplatesTab /></TabsContent>
         <TabsContent value="history" className="mt-4"><IngestionHistoryTab /></TabsContent>
       </Tabs>
 

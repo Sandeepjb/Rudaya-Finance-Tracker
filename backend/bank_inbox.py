@@ -60,7 +60,7 @@ def mask_account(acct: Optional[str]) -> str:
     a = (acct or "").strip()
     if not a:
         return ""
-    return ("X" * max(0, len(a) - 4)) + a[-4:] if len(a) > 4 else "X" * len(a)
+    return ("X" * max(2, len(a) - 4)) + a[-4:] if len(a) >= 4 else "X" * len(a)
 
 
 def bank_fingerprint(d: dict) -> str:
@@ -508,6 +508,18 @@ async def ingestion_history(user: dict = Depends(require_admin), limit: int = 10
     return [{"id": str(d["_id"]), **{k: v for k, v in d.items() if k != "_id"}} for d in docs]
 
 
+async def _pending_or_400(tid: str) -> dict:
+    d = await db.bank_transactions.find_one({"_id": _oid(tid)})
+    if not d:
+        raise HTTPException(404, "Not found")
+    if d["status"] != "pending":
+        raise HTTPException(400, f"Already {d['status']}")
+    return d
+
+
+import bank_inbox_ext  # noqa: E402,F401  literal routes must register before /{tid}
+
+
 # ---------- single txn ----------
 @router.get("/{tid}")
 async def get_txn(tid: str, user: dict = Depends(require_admin)):
@@ -528,15 +540,6 @@ async def txn_audit(tid: str, user: dict = Depends(require_admin)):
     return [{"id": str(d["_id"]), **{k: v for k, v in d.items() if k != "_id"}} for d in docs]
 
 
-async def _pending_or_400(tid: str) -> dict:
-    d = await db.bank_transactions.find_one({"_id": _oid(tid)})
-    if not d:
-        raise HTTPException(404, "Not found")
-    if d["status"] != "pending":
-        raise HTTPException(400, f"Already {d['status']}")
-    return d
-
-
 @router.put("/{tid}")
 async def edit_txn(tid: str, payload: EditIn, user: dict = Depends(require_admin)):
     d = await _pending_or_400(tid)
@@ -548,6 +551,7 @@ async def edit_txn(tid: str, payload: EditIn, user: dict = Depends(require_admin
         raise HTTPException(422, "account and project_id are required")
     prev = _effective(d)
     edits = payload.model_dump()
+    edits["notes"] = edits["notes"].strip() or d["narration"]
     s = d.get("suggestion") or {}
     baseline = {"type": s.get("type"), "account": s.get("account"), "project_id": s.get("project_id"),
                 "amount": d["amount"], "date": d["transaction_date"], "notes": s.get("notes") or d["narration"]}
@@ -561,6 +565,10 @@ async def edit_txn(tid: str, payload: EditIn, user: dict = Depends(require_admin
 @router.post("/{tid}/approve")
 async def approve_txn(tid: str, user: dict = Depends(require_admin)):
     d = await _pending_or_400(tid)
+    return await _approve_pending_doc(d, tid, user)
+
+
+async def _approve_pending_doc(d: dict, tid: str, user: dict) -> dict:
     final = _effective(d)
     if final["type"] not in TYPES or not final.get("account") or not final.get("project_id"):
         raise HTTPException(422, "Suggestion incomplete — edit Type, Account and Project ID before approving")
@@ -618,3 +626,6 @@ async def ensure_indexes():
     await db.bank_mapping_rules.create_index("pattern", unique=True)
     await db.bank_audit_log.create_index([("bank_transaction_id", 1), ("timestamp", 1)])
     await db.bank_ingestion_log.create_index("timestamp")
+    await db.bank_parse_templates.create_index([("bank_name", 1), ("priority", 1)])
+    from bank_inbox_ext import seed_templates
+    await seed_templates()

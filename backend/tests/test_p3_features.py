@@ -36,7 +36,7 @@ def _tiny_pdf() -> bytes:
 
 
 class TestEditPending:
-    def test_edit_transaction_pending(self, admin):
+    def test_edit_transaction_pending(self, admin, txn_state_lock):
         # Seed a pending manually via motor
         import asyncio
         from motor.motor_asyncio import AsyncIOMotorClient
@@ -90,7 +90,7 @@ class TestEditPending:
 
 
 class TestAttachments:
-    def test_upload_list_download_delete(self, admin):
+    def test_upload_list_download_delete(self, admin, txn_state_lock):
         # Need a real transaction to attach to
         payload = {"date": "2026-04-15", "type": "Revenue", "account": "AttachTest",
                    "amount": 1, "project_id": "ATTACH_PRJ", "notes": "attach-test"}

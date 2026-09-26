@@ -1649,7 +1649,7 @@ def _parse_csv_rows(raw: bytes) -> tuple:
         header = next(reader)
     except StopIteration:
         return [], "CSV is empty"
-    header_norm = [h.strip().lower() for h in header]
+    header_norm = ["_".join(h.strip().lower().split()) for h in header]
     missing = [h for h in REQUIRED_CSV_HEADERS if h not in header_norm]
     if missing:
         return [], f"Missing required column(s): {', '.join(missing)}"
@@ -2210,7 +2210,9 @@ async def shutdown_db_client():
 app.include_router(api_router)
 
 import bank_inbox  # noqa: E402  (imports names defined above)
+import excel_export  # noqa: E402
 app.include_router(bank_inbox.router)
+app.include_router(excel_export.router)
 
 app.add_middleware(
     CORSMiddleware,

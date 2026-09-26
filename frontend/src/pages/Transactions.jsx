@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
-import { Plus, MagnifyingGlass, PencilSimple, Trash, DownloadSimple } from "@phosphor-icons/react";
+import { Plus, MagnifyingGlass, PencilSimple, Trash, DownloadSimple, FileXls } from "@phosphor-icons/react";
 import { TypeBadge } from "@/components/TypeBadge";
 import { typeColor } from "@/lib/format";
 import TransactionDrawer from "@/components/TransactionDrawer";
@@ -78,6 +78,19 @@ export default function Transactions() {
     URL.revokeObjectURL(url);
   };
 
+  const exportExcel = async () => {
+    try {
+      const r = await api.get("/export/excel", { responseType: "blob" });
+      const url = URL.createObjectURL(r.data);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `Rudaya-Finance-Tracker-${new Date().toISOString().slice(0, 10)}.xlsx`;
+      a.click();
+      URL.revokeObjectURL(url);
+      toast.success("Excel workbook downloaded");
+    } catch (e) { toast.error(formatApiError(e.response?.data?.detail)); }
+  };
+
   return (
     <Layout
       title="Transactions"
@@ -86,6 +99,9 @@ export default function Transactions() {
         <>
           <Button data-testid="export-csv-btn" variant="outline" className="rounded-none border-neutral-300" onClick={exportCsv}>
             <DownloadSimple size={16} className="mr-2" /> Export CSV
+          </Button>
+          <Button data-testid="export-excel-btn" variant="outline" className="rounded-none border-neutral-300" onClick={exportExcel}>
+            <FileXls size={16} className="mr-2" /> Export Excel
           </Button>
           <Button data-testid="add-transaction-btn" className="rounded-none bg-neutral-900 hover:bg-neutral-700" onClick={() => { setEditing(null); setOpen(true); }}>
             <Plus size={16} className="mr-2" /> New Entry

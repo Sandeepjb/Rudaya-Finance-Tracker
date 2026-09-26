@@ -17,7 +17,7 @@ function Row({ label, value, mono, modified }) {
   );
 }
 
-export default function BankTxnCard({ txn, onChanged, onEdit, onExplain, onAudit }) {
+export default function BankTxnCard({ txn, onChanged, onEdit, onExplain, onAudit, selectable, selected, onToggle }) {
   const [busy, setBusy] = useState(false);
   const s = txn.suggestion || {};
   const eff = { ...{ type: s.type, account: s.account, project_id: s.project_id, amount: txn.amount, date: txn.transaction_date }, ...(txn.final || txn.user_edits || {}) };
@@ -39,11 +39,14 @@ export default function BankTxnCard({ txn, onChanged, onEdit, onExplain, onAudit
   const reclassify = () => act(() => api.post(`/bank-transactions/${txn.id}/reclassify`), "Re-classified");
 
   return (
-    <div className="bg-white border border-neutral-200 p-4 flex flex-col gap-3 hover:border-neutral-400 transition-colors" data-testid={`bank-txn-card-${txn.id}`}>
+    <div className={`bg-white border p-4 flex flex-col gap-3 transition-colors ${selected ? "border-emerald-600 ring-1 ring-emerald-600" : "border-neutral-200 hover:border-neutral-400"}`} data-testid={`bank-txn-card-${txn.id}`}>
       <div className="flex items-start justify-between gap-3">
-        <div>
+        <div className="flex items-start gap-3">
+          {selectable && <input type="checkbox" data-testid="card-select" className="mt-1.5 h-4 w-4 accent-emerald-700" checked={!!selected} onChange={() => onToggle(txn.id)} />}
+          <div>
           <div className="font-heading font-semibold text-neutral-900" data-testid="card-bank-name">{txn.bank_name} <span className="text-xs text-neutral-500 font-mono-tab font-normal">{txn.bank_account_masked}</span></div>
           <div className="text-xs text-neutral-500 font-mono-tab">{fmtDate(txn.transaction_date)} {txn.transaction_time}</div>
+          </div>
         </div>
         <div className="text-right">
           <div className={`font-mono-tab text-lg ${txn.direction === "debit" ? "text-neutral-900" : "text-blue-700"}`} data-testid="card-amount">{inr(txn.amount)}</div>

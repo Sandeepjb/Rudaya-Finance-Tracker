@@ -15,6 +15,7 @@ BT = f"{API}/bank-transactions"
 ENV = dotenv_values("/app/backend/.env")
 INGEST_KEY = ENV["BANK_INGEST_API_KEY"]
 HDR = {"X-Ingest-Key": INGEST_KEY}
+W = "".join(chr(65 + int(c)) if c.isdigit() else c for c in os.environ.get("PYTEST_XDIST_WORKER", "gw0").upper())
 
 
 @pytest.fixture(scope="module", autouse=True)
@@ -22,15 +23,20 @@ def cleanup_qa_data():
     yield
     import asyncio
     from motor.motor_asyncio import AsyncIOMotorClient
+    from bson import ObjectId
     cl = AsyncIOMotorClient(ENV["MONGO_URL"])
     d = cl[ENV["DB_NAME"]]
 
     async def run():
-        tag_re = {"$regex": "^(ZEBRAHOSTING|GIRAFFECLOUD|CLIENTPAYIN|LEARNCO|STABLECO|RULECRUD)"}
+        fin_ids = [ObjectId(x["finance_transaction_id"]) async for x in d.bank_transactions.find(
+            {"bank_name": {"$in": ["QA Bank " + W, "FilterBank " + W]}}, {"finance_transaction_id": 1}) if x.get("finance_transaction_id")]
+        if fin_ids:
+            await d.transactions.delete_many({"_id": {"$in": fin_ids}})
+        tag_re = {"$regex": "^(ZEBRAHOSTING|GIRAFFECLOUD|CLIENTPAYIN|LEARNCO|STABLECO|RULECRUD)" + W}
         await d.transactions.delete_many({"$or": [{"notes": tag_re}, {"source": "bank_transaction",
-                                                                        "notes": {"$regex": "^(QA NARRATION|approved via qa|edited|learn|audit|LEARNCO|STABLECO|RULECRUD)"}}]})
+                                                                        "notes": {"$regex": "^(QA NARRATION|approved via qa|edited|learn|stable|crud|audit|LEARNCO|STABLECO|RULECRUD)"}}]})
         await d.transactions.delete_many({"source": "bank_transaction", "created_by": {"$regex": "bankqa_"}})
-        await d.bank_transactions.delete_many({"bank_name": {"$in": ["QA Bank", "FilterBank"]}})
+        await d.bank_transactions.delete_many({"bank_name": {"$in": ["QA Bank " + W, "FilterBank " + W]}})
         await d.bank_mapping_rules.delete_many({"pattern": tag_re})
         await d.users.delete_many({"email": {"$regex": "^bankqa_"}})
     asyncio.get_event_loop().run_until_complete(run())
@@ -73,7 +79,7 @@ def _alpha_tag(n=5):
 
 
 def _txn(**kw):
-    base = {"bank_name": "QA Bank", "bank_account": "111122223333", "transaction_date": "2026-05-10",
+    base = {"bank_name": "QA Bank " + W, "bank_account": "111122223333", "transaction_date": "2026-05-10",
             "direction": "debit", "amount": 1234.5, "narration": f"QA NARRATION {uuid.uuid4().hex[:6].upper()}",
             "bank_reference": f"QAREF{uuid.uuid4().hex[:10].upper()}", "source": "power_automate"}
     base.update(kw)
@@ -168,12 +174,18 @@ class TestDuplicates:
 
 
 class TestClassification:
+    @pytest.fixture(autouse=True)
+    def _lock(self, txn_state_lock):
+        yield
+
     def test_historical_exact_match(self, admin, meta):
-        tag = "ZEBRAHOSTING " + _alpha_tag()
-        for _ in range(3):
-            admin.post(f"{API}/transactions", json={"date": "2026-03-01", "type": "Cost", "account": meta["account"],
-                                                    "amount": 5000, "project_id": meta["project"], "notes": f"{tag} monthly"})
+        tag = "ZEBRAHOSTING" + W + _alpha_tag()
+        seeded = [admin.post(f"{API}/transactions", json={"date": "2026-03-01", "type": "Cost", "account": meta["account"],
+                                                          "amount": 5000, "project_id": meta["project"], "notes": f"{tag} monthly {i}"}).json()["id"]
+                  for i in range(3)]
         r = ingest([_txn(narration=f"{tag} MONTHLY 998877", amount=5000)]).json()["results"][0]
+        for sid in seeded:
+            admin.delete(f"{API}/transactions/{sid}")
         s = r["suggestion"]
         assert len(r["matches"]) >= 3
         assert s["type"] == "Cost" and s["account"] == meta["account"] and s["project_id"] == meta["project"]
@@ -183,19 +195,22 @@ class TestClassification:
         assert any("Exact amount" in x for x in s["reasons"])
 
     def test_historical_similarity_match_different_amount(self, admin, meta):
-        tag = "GIRAFFECLOUD " + _alpha_tag()
-        admin.post(f"{API}/transactions", json={"date": "2026-03-01", "type": "Expense", "account": meta["account"],
-                                                "amount": 800, "project_id": meta["project"], "notes": f"{tag} services"})
+        tag = "GIRAFFECLOUD" + W + _alpha_tag()
+        sid = admin.post(f"{API}/transactions", json={"date": "2026-03-01", "type": "Expense", "account": meta["account"],
+                                                      "amount": 800, "project_id": meta["project"], "notes": f"{tag} services"}).json()["id"]
         r = ingest([_txn(narration=f"{tag} SERVICES 1234567", amount=3200)]).json()["results"][0]
+        admin.delete(f"{API}/transactions/{sid}")
         assert r["matches"] and r["matches"][0]["similarity"] > 0.3
         assert r["suggestion"]["account"] == meta["account"]
 
     def test_debit_not_assumed_expense(self, admin, meta):
-        tag = "CLIENTPAYIN " + _alpha_tag()
-        for _ in range(2):
-            admin.post(f"{API}/transactions", json={"date": "2026-03-01", "type": "Revenue", "account": meta["account"],
-                                                    "amount": 70000, "project_id": meta["project"], "notes": f"{tag} invoice"})
+        tag = "CLIENTPAYIN" + W + _alpha_tag()
+        seeded = [admin.post(f"{API}/transactions", json={"date": "2026-03-01", "type": "Revenue", "account": meta["account"],
+                                                          "amount": 70000, "project_id": meta["project"], "notes": f"{tag} invoice {i}"}).json()["id"]
+                  for i in range(2)]
         r = ingest([_txn(narration=f"{tag} INVOICE 5566", amount=70000, direction="debit")]).json()["results"][0]
+        for sid in seeded:
+            admin.delete(f"{API}/transactions/{sid}")
         assert r["suggestion"]["type"] == "Revenue"
 
     def test_low_confidence_or_ai_fallback_for_unknown(self):
@@ -215,6 +230,10 @@ class TestClassification:
 
 
 class TestApprovalFlow:
+    @pytest.fixture(autouse=True)
+    def _lock(self, txn_state_lock):
+        yield
+
     def test_approve_creates_exactly_one_finance_txn(self, admin, meta):
         r = ingest([_txn()]).json()["results"][0]
         e = admin.put(f"{BT}/{r['id']}", json={"type": "Expense", "account": meta["account"], "project_id": meta["project"],
@@ -292,21 +311,25 @@ class TestApprovalFlow:
         assert s["pending"] >= 1 and "all" in s
 
     def test_list_filters(self, admin):
-        ingest([_txn(bank_name="FilterBank", direction="credit", amount=42424)])
-        rows = admin.get(BT, params={"bank": "FilterBank", "direction": "credit", "min_amount": 42000, "max_amount": 43000}).json()
-        assert rows and all(r["direction"] == "credit" and r["bank_name"] == "FilterBank" for r in rows)
+        ingest([_txn(bank_name="FilterBank " + W, direction="credit", amount=42424)])
+        rows = admin.get(BT, params={"bank": "FilterBank " + W, "direction": "credit", "min_amount": 42000, "max_amount": 43000}).json()
+        assert rows and all(r["direction"] == "credit" and r["bank_name"] == "FilterBank " + W for r in rows)
         assert admin.get(BT, params={"status": "duplicate"}).status_code == 200
 
 
 class TestLearning:
+    @pytest.fixture(autouse=True)
+    def _lock(self, txn_state_lock):
+        yield
+
     def test_mapping_rule_learned_and_used(self, admin, meta):
-        tag = "LEARNCO" + _alpha_tag()
+        tag = "LEARNCO" + W + _alpha_tag()
         other_proj = meta["raw"]["project_ids"][-1]["code"]
         ids = []
-        for _ in range(3):
+        for i in range(3):
             r = ingest([_txn(narration=f"{tag} PAYMENT 12345678", amount=2500)]).json()["results"][0]
             admin.put(f"{BT}/{r['id']}", json={"type": "Cost", "account": meta["account"], "project_id": other_proj,
-                                              "amount": 2500, "date": r["transaction_date"], "notes": "learn"})
+                                              "amount": 2500, "date": r["transaction_date"], "notes": f"learn {i}"})
             assert admin.post(f"{BT}/{r['id']}/approve").status_code == 200
             ids.append(r["id"])
         rules = [x for x in admin.get(f"{BT}/rules").json() if x["pattern"].startswith(tag)]
@@ -321,12 +344,12 @@ class TestLearning:
         assert any("Learned mapping rule" in x for x in r["suggestion"]["reasons"])
 
     def test_single_correction_does_not_override(self, admin, meta):
-        tag = "STABLECO" + _alpha_tag()
+        tag = "STABLECO" + W + _alpha_tag()
         other_proj = meta["raw"]["project_ids"][-1]["code"]
-        for _ in range(3):
+        for i in range(3):
             r = ingest([_txn(narration=f"{tag} FEE 111", amount=100)]).json()["results"][0]
             admin.put(f"{BT}/{r['id']}", json={"type": "Expense", "account": meta["account"], "project_id": meta["project"],
-                                              "amount": 100, "date": r["transaction_date"]})
+                                              "amount": 100, "date": r["transaction_date"], "notes": f"stable {i}"})
             admin.post(f"{BT}/{r['id']}/approve")
         r = ingest([_txn(narration=f"{tag} FEE 222", amount=100)]).json()["results"][0]
         admin.put(f"{BT}/{r['id']}", json={"type": "Cost", "account": meta["account"], "project_id": other_proj,
@@ -336,11 +359,11 @@ class TestLearning:
         assert rule["mapping"]["type"] == "Expense" and rule["corrections"] == 1 and rule["uses"] == 3
 
     def test_rule_admin_crud_and_disable(self, admin, meta):
-        tag = "RULECRUD" + _alpha_tag()
-        for _ in range(2):
+        tag = "RULECRUD" + W + _alpha_tag()
+        for i in range(2):
             r = ingest([_txn(narration=f"{tag} X 1", amount=50)]).json()["results"][0]
             admin.put(f"{BT}/{r['id']}", json={"type": "Expense", "account": meta["account"], "project_id": meta["project"],
-                                              "amount": 50, "date": r["transaction_date"]})
+                                              "amount": 50, "date": r["transaction_date"], "notes": f"crud {i}"})
             admin.post(f"{BT}/{r['id']}/approve")
         rule = [x for x in admin.get(f"{BT}/rules").json() if x["pattern"].startswith(tag)][0]
         u = admin.put(f"{BT}/rules/{rule['id']}", json={"type": "Cost"})
