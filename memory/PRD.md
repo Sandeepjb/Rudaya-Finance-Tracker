@@ -43,6 +43,16 @@
 - Tests: 100/100 backend (tests now use per-xdist-worker tags + txn_state_lock to avoid cross-worker pollution); frontend iteration_8 all pass. No tabs in any .py.
 - Phase 2 remaining: actual Power Automate flow on the customer tenant (guide provided), Bank Reconciliation module.
 
+## Implemented (2026-09-26) — batch 7: Phase 2 M365 queue readiness, Reconciliation, PDF import
+- `backend/bank_parsers/` (base, icici, hdfc, saraswat, generic, registry): pluggable parsers → normalized output incl. transaction_time, currency, merchant_name, utr_reference, parser_name/version. Selection: bank_hint(+100) > trusted sender(+50) > subject(+15) > body keywords(+10) > generic; exposes selection_method / selection_confidence. HTML→text tolerant.
+- `backend/bank_inbox_phase2.py`: `POST /api/bank-transactions/queue` (X-Ingest-Key + optional X-Idempotency-Key; payload supports source_message_id / internet_message_id / recipient / received_datetime / email_body_text|html / bank_hint / source / queue_item_id / idempotency_key). Pipeline: validate → source-id/idempotency replay (returns existing result, no new item, audited) → parse → ingest_one (fingerprint dup + classify) → pending. Statuses received/parsed/parse_failed/duplicate/pending in `bank_queue_messages`; `GET /queue`, `/queue/stats`, `/queue/{id}`, `/queue/{id}/resolve|discard`; `POST /parsers/test`, `POST /parsers/submit`, `GET /parsers`.
+- Reconciliation: `GET /reconciliation/summary|/reconciliation|/reconciliation/unmatched-finance`, `POST /{id}/reconcile/match|unmatch|ignore`, `POST /reconciliation/auto`; candidates ±3 days, ±2% amount; statuses matched/partially_matched/unmatched/ignored; startup backfill marks legacy approved+linked as matched.
+- PDF statements: `POST /statement/pdf/preview|import` (pdfplumber text extraction; scanned PDFs rejected with message).
+- UI tabs: M365 Queue (Needs Parsing Review + Resolve/Discard), Parser Test (+ Send to Bank Inbox), Reconciliation; Import Statement accepts PDF.
+- Constant-time ingest-key compare (hmac); 401 body no longer hints at key. Env vars: none new (BANK_INGEST_API_KEY reused; PUBLIC_API_BASE_URL optional for guide).
+- Tests: 120/120 backend (`tests/test_bank_phase2.py` 20 tests), frontend iteration_9.
+- Not done (by design): configuring M365/Power Automate/SharePoint; OCR for scanned PDFs; bank-specific parser refinement pending real samples.
+
 ## Backlog / Next
 - P1 (approved for later): Phase 2 Power Automate / SharePoint ingestion; Bank Reconciliation
 - P1: Excel `.xlsx` export mirroring the original template + a Forecast sheet

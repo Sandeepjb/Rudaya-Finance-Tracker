@@ -1,0 +1,38 @@
+{
+  "summary": "Frontend-only e2e testing of Phase-2 admin Bank Transactions features: Parser Test tab (default sample + unparseable + Send-to-Inbox), M365 Queue tab (Needs Parsing Review resolve + discard), Reconciliation tab (summary tiles, matched→unmatch→match, ignore, finance-w/o-bank list, auto-match), Import Statement PDF path. All 7 review-request scenarios PASSED.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Dashboard", "issues": ["Recurring Recharts warning 'width(-1) and height(-1) of chart should be greater than 0' (pre-existing, non-blocking, flagged in iteration_7 & 8)"]}
+    ]
+  },
+  "test_report_links": [],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "ParserTestTab.send() and QueueTab.discard() both use window.confirm — must be handled with page.once('dialog', d.accept()) in playwright. Same UX inconsistency called out in iteration_8; consider a shadcn AlertDialog for testable modal confirmations.",
+    "StatementImportTab: after import the frontend renders <statement-result> only after backend AI classification returns (took >6s for 2 PDF rows). Consider optimistic setResult from the response before awaiting classification, or a spinner during doImport, so users get immediate feedback.",
+    "ParserTestTab.pt-send toast on duplicate says 'Sent to inbox — status duplicate' — this is actually a NOOP (idempotency), which is technically correct but the wording 'Sent' can mislead. Consider distinguishing 'Sent' vs 'Duplicate (already in inbox)'.",
+    "QueueTab: filter buttons show a fixed set incl. 'discarded' status but there's no filter chip for it — resolved items go to 'pending' but discarded ones become invisible in UI. Consider adding a discarded chip or a 'show discarded' toggle.",
+    "ReconciliationTab: recon-auto-btn success path calls toast.info AND toast.success back-to-back (auto() does toast.info inside act(), then act's success message). Two toasts fire — slight noise."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "not tested (skipped per request)", "frontend": "100%"},
+  "test_credentials": "sandeepjb2014@gmail.com / Rudaya@1246 (admin)",
+  "seed_data_creation": "Via backend POST /api/bank-transactions/queue (X-Ingest-Key from backend/.env): seeded 2 unparseable messages tagged QAUI2-seed1/seed2. Via UI: (a) pt-send ingested the default ICICI MICROSOFT SUBSCRIPTION alert (duplicate on retry - idempotent). (b) queue-resolve created a pending bank txn narration 'QAUI2 MANUAL' amount 250 bank 'QA Bank'. (c) queue-discard removed one QAUI2 failed row. (d) StatementImport PDF /tmp/qaui2_statement.pdf ingested 2 ICICI PDF rows (UPI/QAUI2 TEST MERCHANT 1,234 debit + NEFT CR QAUI2 CLIENT 5,000 credit). (e) One matched approved bank txn was unmatched then re-ignored via Reconciliation (ignored count 0→1).",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Phase-2 testids all present & working: parser-test-tab, pt-body/pt-run/pt-result/pt-selected/pt-selection/pt-fields/pt-warnings/pt-send/pt-candidates/pt-candidate-{icici,hdfc,saraswat,generic}; queue-tab, queue-filter-{parse_failed,pending,duplicate,parsed,received,all}, queue-row-{id}, queue-status ('Needs Parsing Review' label), queue-resolve-btn, queue-discard-btn, queue-resolve-dialog, resolve-{bank,date,direction,amount,narration,reference,account,submit}, queue-body-preview, queue-empty; reconciliation-tab, recon-summary, recon-filter-{matched,partially_matched,unmatched,ignored,finance}, recon-auto-btn, recon-row-{id}, recon-status, recon-fin-link, recon-unmatch-btn, recon-ignore-btn, recon-candidate, recon-match-btn, recon-bank-list, recon-finance-list, recon-fin-row, recon-empty; statement-import-tab PDF path: pdf-note shows 'PDF rows detected from extracted text (N lines)', statement-mapping and map-* are absent for PDFs (only CSV), statement-import-btn works, statement-result renders AFTER AI classification (>6s for 2 rows). Confirmed 6 tabs (Pending/Approved/Rules/Import/Templates/History) still load. Login testids are login-email-input / login-password-input / login-submit-button (NOT login-email/login-password). Confirm dialogs (pt-send, queue-discard) require page.once('dialog', lambda d: asyncio.create_task(d.accept())) — the previous asyncio.create_task pattern works with playwright async.",
+  "verified_scenarios": [
+    "Parser Test default sample → pt-selected 'icici v1.0 · score 50', method=sender, confidence 60%, pt-fields includes amount 4499.13, pt-candidates has exactly 4 rows (icici/hdfc/saraswat/generic)",
+    "pt-send with confirm dialog → toast 'Sent to inbox — status duplicate' (idempotent on retry), Pending tab shows the MICROSOFT SUBSCRIPTION card",
+    "Unparseable body 'Hello your OTP is 1234' → pt-result shows 'Parse failed: amount not found, direction not found, date not found, narration not found', no pt-send button rendered",
+    "M365 Queue tab: all 6 filter chips render, seeded QAUI2 rows appear with status label 'Needs Parsing Review', queue-resolve-btn opens dialog, submit creates pending bank txn 'QAUI2 MANUAL' — appears both in queue pending filter and Pending tab",
+    "queue-discard-btn with confirm → seeded QAUI2 row disappears from Needs Parsing Review filter (2 → 1)",
+    "Reconciliation summary tiles render (matched=3, partially=0, unmatched=4, ignored=0, finance-w/o-bank=118), recon-filter-matched shows 3 rows each with recon-fin-link, recon-unmatch-btn works, recon-ignore-btn increments ignored count 0→1, recon-filter-finance shows table with 121 rows, recon-auto-btn produces toasts 'Auto-reconciliation complete' and '0 matched, 0 orphaned'",
+    "Import Statement PDF: /tmp/qaui2_statement.pdf → preview shows pdf-note '4 lines', summary '2 valid / 0 invalid / 2 rows', mapping selects hidden (statement-mapping count=0), import succeeds and re-preview shows '2 already in inbox (skipped)' confirming persistence",
+    "Regression: Pending/Approved/Mapping Rules/Import/Templates/History tabs all load; Dashboard and Transactions pages load OK"
+  ],
+  "rca of the issue": "N/A — all Phase-2 scenarios passed on first run. One initial false-negative on S6 was due to a 6s wait being shorter than the backend AI-classification latency; the import actually succeeded (confirmed on retry showing '2 already in inbox')."
+}
