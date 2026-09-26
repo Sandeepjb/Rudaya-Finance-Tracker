@@ -8,9 +8,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
-import { Plus, PencilSimple, Trash, Target } from "@phosphor-icons/react";
+import { Plus, PencilSimple, Trash, Target, Copy } from "@phosphor-icons/react";
 import { TypeBadge } from "@/components/TypeBadge";
 import { typeColor } from "@/lib/format";
+import CopyLastYearDialog from "@/components/CopyLastYearDialog";
 
 const currentYear = new Date().getFullYear();
 const YEARS = [currentYear - 1, currentYear, currentYear + 1, currentYear + 2];
@@ -46,6 +47,7 @@ export default function SalesForecast() {
   const [filterType, setFilterType] = useState(ANY);
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState(null);
+  const [copyOpen, setCopyOpen] = useState(false);
 
   const load = useCallback(async () => {
     const params = { year: filterYear };
@@ -93,9 +95,14 @@ export default function SalesForecast() {
       title="Sales Forecast"
       subtitle={`${items.length} line items · Rev ${inr(totals.byType.Revenue)} · Cost ${inr(totals.byType.Cost)} · Exp ${inr(totals.byType.Expense)}`}
       actions={
-        <Button data-testid="add-sf-btn" className="rounded-none bg-neutral-900 hover:bg-neutral-700" onClick={() => { setEditing(null); setOpen(true); }}>
-          <Plus size={16} className="mr-2" /> New Entry
-        </Button>
+        <>
+          <Button data-testid="copy-last-year-btn" variant="outline" className="rounded-none" onClick={() => setCopyOpen(true)}>
+            <Copy size={16} className="mr-2" /> Copy Last Year
+          </Button>
+          <Button data-testid="add-sf-btn" className="rounded-none bg-neutral-900 hover:bg-neutral-700" onClick={() => { setEditing(null); setOpen(true); }}>
+            <Plus size={16} className="mr-2" /> New Entry
+          </Button>
+        </>
       }
     >
       <div className="rudaya-card p-4 mb-4">
@@ -200,6 +207,7 @@ export default function SalesForecast() {
         onSaved={load}
         defaultYear={filterYear}
       />
+      <CopyLastYearDialog open={copyOpen} onOpenChange={setCopyOpen} onCopied={load} />
     </Layout>
   );
 }

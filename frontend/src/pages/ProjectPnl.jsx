@@ -2,11 +2,13 @@ import React, { useEffect, useMemo, useState } from "react";
 import Layout from "@/components/Layout";
 import { api, inr } from "@/lib/api";
 import { Input } from "@/components/ui/input";
-import { MagnifyingGlass } from "@phosphor-icons/react";
+import { MagnifyingGlass, ArrowRight } from "@phosphor-icons/react";
+import ProjectDetailDrawer from "@/components/ProjectDetailDrawer";
 
 export default function ProjectPnl() {
   const [rows, setRows] = useState([]);
   const [q, setQ] = useState("");
+  const [openProject, setOpenProject] = useState(null);
 
   useEffect(() => { api.get("/reports/project-pnl").then((r) => setRows(r.data)); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);
 
@@ -24,7 +26,7 @@ export default function ProjectPnl() {
   );
 
   return (
-    <Layout title="Project-wise P&L" subtitle="Revenue, Cost, Expense and Profit by Project ID">
+    <Layout title="Project-wise P&L" subtitle="Click any row for the full drilldown · transactions, forecast vs actual, quotations">
       <div className="rudaya-card p-4 mb-4">
         <div className="relative max-w-sm">
           <MagnifyingGlass size={14} className="absolute left-3 top-2.5 text-neutral-400" />
@@ -43,17 +45,24 @@ export default function ProjectPnl() {
                 <th className="px-3 py-3 text-right">Gross Profit</th>
                 <th className="px-3 py-3 text-right">Expense</th>
                 <th className="px-4 py-3 text-right">Net Profit</th>
+                <th className="px-3 py-3 w-10"></th>
               </tr>
             </thead>
             <tbody>
               {filtered.map((r) => (
-                <tr key={r.project_id} className="border-b border-neutral-100 hover:bg-neutral-50 transition-colors">
-                  <td className="px-4 py-2.5 font-mono-tab text-xs">{r.project_id}</td>
+                <tr
+                  key={r.project_id}
+                  className="border-b border-neutral-100 hover:bg-neutral-50 transition-colors cursor-pointer"
+                  onClick={() => setOpenProject(r.project_id)}
+                  data-testid={`project-row-${r.project_id}`}
+                >
+                  <td className="px-4 py-2.5 font-mono-tab text-xs text-blue-700 underline underline-offset-2 decoration-dotted">{r.project_id}</td>
                   <td className="px-3 py-2.5 text-right font-mono-tab text-sm text-emerald-700">{inr(r.revenue)}</td>
                   <td className="px-3 py-2.5 text-right font-mono-tab text-sm text-red-700">{inr(r.cost)}</td>
                   <td className={`px-3 py-2.5 text-right font-mono-tab text-sm font-medium ${r.gross_profit >= 0 ? "text-neutral-900" : "text-red-700"}`}>{inr(r.gross_profit)}</td>
                   <td className="px-3 py-2.5 text-right font-mono-tab text-sm text-amber-700">{inr(r.expense)}</td>
                   <td className={`px-4 py-2.5 text-right font-mono-tab text-sm font-semibold ${r.net_profit >= 0 ? "text-blue-700" : "text-red-700"}`}>{inr(r.net_profit)}</td>
+                  <td className="px-3 py-2.5 text-neutral-400"><ArrowRight size={14} /></td>
                 </tr>
               ))}
             </tbody>
@@ -65,11 +74,18 @@ export default function ProjectPnl() {
                 <td className="px-3 py-3 text-right font-mono-tab text-sm">{inr(totals.gross_profit)}</td>
                 <td className="px-3 py-3 text-right font-mono-tab text-sm">{inr(totals.expense)}</td>
                 <td className="px-4 py-3 text-right font-mono-tab text-sm font-semibold">{inr(totals.net_profit)}</td>
+                <td></td>
               </tr>
             </tfoot>
           </table>
         </div>
       </div>
+
+      <ProjectDetailDrawer
+        projectId={openProject}
+        open={!!openProject}
+        onOpenChange={(o) => !o && setOpenProject(null)}
+      />
     </Layout>
   );
 }

@@ -866,6 +866,261 @@ async def project_pnl(user: dict = Depends(get_current_user)):
     return rows
 
 
+@api_router.get("/reports/project-detail/{project_id}")
+async def project_detail(project_id: str, user: dict = Depends(get_current_user), year: Optional[int] = None):
+    """Drilldown for a single project — transactions, month-by-month forecast vs actual (SF + non-lost
+    quotations scoped to the project), and totals. `year` defaults to current."""
+    y = year or datetime.now(timezone.utc).year
+    types = ["Revenue", "Cost", "Expense"]
+
+    # Actual per (type, month) scoped to project
+    actual = _typed_bucket_zero()
+    totals = {"Revenue": 0.0, "Cost": 0.0, "Expense": 0.0}
+    txn_docs = await db.transactions.find({"project_id": project_id}).sort("date", -1).to_list(5000)
+    for t in txn_docs:
+        totals[t["type"]] = totals.get(t["type"], 0) + t["amount"]
+        dt = _parse_iso(t.get("date", ""))
+        if dt and dt.year == y and t["type"] in actual:
+            actual[t["type"]][dt.month] += t["amount"]
+
+    # Forecast per (type, month) scoped to project (SF rows + non-lost quotation lines)
+    forecast = _typed_bucket_zero()
+    line_counts = _typed_bucket_zero()
+    async for sf in db.sales_forecast.find({"year": y, "project_id": project_id}):
+        m, typ = sf.get("month"), sf.get("type", "Revenue")
+        if m and 1 <= m <= 12 and typ in forecast:
+            forecast[typ][m] += sf.get("amount", 0)
+            line_counts[typ][m] += 1
+
+    quotations = []
+    async for q in db.quotations.find({"project_id": project_id, "status": {"$ne": "lost"}}).sort("quote_date", -1):
+        quotations.append({
+            "id": str(q["_id"]),
+            "quotation_number": q.get("quotation_number"),
+            "client_name": q.get("client_name", ""),
+            "expected_year": q.get("expected_year"),
+            "expected_month": q.get("expected_month"),
+            "status": q.get("status"),
+            "totals": _q_totals(q.get("lines") or []),
+        })
+        if q.get("expected_year") != y:
+            continue
+        m = q.get("expected_month")
+        if not (m and 1 <= m <= 12):
+            continue
+        for ln in (q.get("lines") or []):
+            typ = ln.get("type", "Revenue")
+            if typ in forecast:
+                forecast[typ][m] += ln.get("amount", 0)
+                line_counts[typ][m] += 1
+
+    rows = []
+    for m in range(1, 13):
+        row = {"month": m, "label": datetime(y, m, 1).strftime("%b"),
+               "forecast": {}, "actual": {}, "variance": {}, "achievement_pct": {}, "line_items": {}}
+        for t in types:
+            fv, av = forecast[t][m], actual[t][m]
+            row["forecast"][t] = fv
+            row["actual"][t] = av
+            row["variance"][t] = av - fv
+            row["achievement_pct"][t] = (av / fv * 100) if fv else None
+            row["line_items"][t] = line_counts[t][m]
+        rows.append(row)
+
+    total_forecast = {t: sum(forecast[t].values()) for t in types}
+    total_actual = {t: sum(actual[t].values()) for t in types}
+    txns_out = [txn_out(t) for t in txn_docs]
+
+    return {
+        "project_id": project_id,
+        "year": y,
+        "totals": {
+            "revenue": totals["Revenue"],
+            "cost": totals["Cost"],
+            "expense": totals["Expense"],
+            "gross_profit": totals["Revenue"] - totals["Cost"],
+            "net_profit": totals["Revenue"] - totals["Cost"] - totals["Expense"],
+        },
+        "rows": rows,
+        "total_forecast": total_forecast,
+        "total_actual": total_actual,
+        "transactions": txns_out,
+        "quotations": quotations,
+        "transaction_count": len(txns_out),
+    }
+
+
+# --- Copy Last Year Forecast ---
+class CopyLastYearIn(BaseModel):
+    target_year: int
+    include_quotations: bool = False
+    overwrite: bool = False  # if False, skip rows whose (year, month, type, project_id, notes) already exists
+
+
+@api_router.post("/sales-forecast/copy-last-year")
+async def copy_last_year_forecast(payload: CopyLastYearIn, user: dict = Depends(get_current_user)):
+    """Clone last year's Sales Forecast line items into `target_year`. Optionally clone non-lost
+    quotations too (with `expected_year` shifted and a new unique quotation_number).
+    Non-destructive: existing rows in the target year are preserved unless `overwrite=True`."""
+    src_year = payload.target_year - 1
+    now_iso = datetime.now(timezone.utc).isoformat()
+    src_rows = await db.sales_forecast.find({"year": src_year}).to_list(2000)
+    sf_created = sf_skipped = 0
+
+    for sf in src_rows:
+        doc = {
+            "year": payload.target_year,
+            "month": sf.get("month"),
+            "type": sf.get("type", "Revenue"),
+            "project_id": sf.get("project_id", ""),
+            "amount": sf.get("amount", 0),
+            "notes": sf.get("notes", ""),
+        }
+        # Dedup key: (year, month, type, project_id, notes)
+        dup = await db.sales_forecast.find_one({
+            "year": doc["year"], "month": doc["month"],
+            "type": doc["type"], "project_id": doc["project_id"],
+            "notes": doc["notes"],
+        })
+        if dup and not payload.overwrite:
+            sf_skipped += 1
+            continue
+        doc["created_at"] = now_iso
+        doc["updated_at"] = now_iso
+        doc["created_by"] = user["email"]
+        doc["source"] = "copy_last_year"
+        doc["copied_from_year"] = src_year
+        await db.sales_forecast.insert_one(doc)
+        sf_created += 1
+
+    q_created = q_skipped = 0
+    if payload.include_quotations:
+        async for q in db.quotations.find({"expected_year": src_year, "status": {"$ne": "lost"}}):
+            base_number = q.get("quotation_number") or f"Q{str(q['_id'])[-6:]}"
+            new_number = f"{base_number}-COPY{payload.target_year}"
+            if await db.quotations.find_one({"quotation_number": new_number}):
+                q_skipped += 1
+                continue
+            new_doc = {
+                "quotation_number": new_number,
+                "client_name": q.get("client_name", ""),
+                "project_id": q.get("project_id", ""),
+                "quote_date": (q.get("quote_date") or "")[:4].replace(str(src_year), str(payload.target_year)) + (q.get("quote_date") or "")[4:] if (q.get("quote_date") or "").startswith(str(src_year)) else q.get("quote_date", f"{payload.target_year}-01-01"),
+                "expected_year": payload.target_year,
+                "expected_month": q.get("expected_month"),
+                "status": "draft",
+                "notes": (q.get("notes", "") + f" [copied from {base_number}]").strip(),
+                "lines": q.get("lines") or [],
+                "created_at": now_iso,
+                "updated_at": now_iso,
+                "created_by": user["email"],
+                "source": "copy_last_year",
+            }
+            try:
+                await db.quotations.insert_one(new_doc)
+                q_created += 1
+            except DuplicateKeyError:
+                q_skipped += 1
+
+    return {
+        "ok": True,
+        "target_year": payload.target_year,
+        "source_year": src_year,
+        "sales_forecast": {"copied": sf_created, "skipped": sf_skipped},
+        "quotations": {"copied": q_created, "skipped": q_skipped} if payload.include_quotations else None,
+    }
+
+
+# --- P&L Impact preview for Backup restore ---
+@api_router.post("/migrations/backups/{stamp}/dry-run")
+async def backup_restore_dry_run(stamp: str, mode: str = Form(...), user: dict = Depends(require_admin)):
+    """Preview month-by-month P&L delta if we restored this backup snapshot in `mode` (merge|full)."""
+    if mode not in ("merge", "full"):
+        raise HTTPException(status_code=400, detail="mode must be 'merge' or 'full'")
+    docs = await db.transaction_import_backups.find({"_backup_stamp": stamp}).to_list(None)
+    if not docs:
+        raise HTTPException(status_code=404, detail="Backup snapshot not found")
+
+    existing_fps = await _existing_fingerprints()
+    to_insert = []
+    seen: set = set()
+    for d in docs:
+        core = _strip_backup_meta(d)
+        if not all(k in core for k in ("date", "type", "account", "amount")):
+            continue
+        fp = _fingerprint(core)
+        if mode == "merge" and (fp in existing_fps or fp in seen):
+            continue
+        if mode == "full" and fp in seen:
+            continue
+        seen.add(fp)
+        to_insert.append(core)
+
+    types = ["Revenue", "Cost", "Expense"]
+    years = sorted({int((r.get("date") or "0000")[:4]) for r in to_insert if r.get("date")})
+    if not years:
+        years = [datetime.now(timezone.utc).year]
+
+    years_out = {}
+    for y in years:
+        before = await _month_totals_for_year(y)
+        contrib = _typed_bucket_zero()
+        for r in to_insert:
+            try:
+                dt = datetime.strptime((r.get("date") or "")[:10], "%Y-%m-%d")
+            except ValueError:
+                continue
+            if dt.year != y:
+                continue
+            typ = r.get("type")
+            if typ in contrib:
+                contrib[typ][dt.month] += r.get("amount", 0)
+
+        # Full restore wipes current transactions first, so `after` is only the snapshot rows.
+        if mode == "full":
+            after = _typed_bucket_zero()
+        else:
+            after = {t: dict(before[t]) for t in types}
+        for t in types:
+            for m in range(1, 13):
+                after[t][m] = after[t].get(m, 0) + contrib[t][m]
+
+        months = []
+        for m in range(1, 13):
+            b = {t: before[t][m] for t in types}
+            a = {t: after[t][m] for t in types}
+            b["net"] = b["Revenue"] - b["Cost"] - b["Expense"]
+            a["net"] = a["Revenue"] - a["Cost"] - a["Expense"]
+            months.append({
+                "month": m,
+                "label": datetime(y, m, 1).strftime("%b"),
+                "before": b, "after": a,
+                "delta": {t: a[t] - b[t] for t in [*types, "net"]},
+            })
+
+        totals_before = {t: sum(before[t].values()) for t in types}
+        totals_after = {t: sum(after[t].values()) for t in types}
+        totals_before["net"] = totals_before["Revenue"] - totals_before["Cost"] - totals_before["Expense"]
+        totals_after["net"] = totals_after["Revenue"] - totals_after["Cost"] - totals_after["Expense"]
+        years_out[str(y)] = {
+            "months": months,
+            "totals_before": totals_before,
+            "totals_after": totals_after,
+            "totals_delta": {t: totals_after[t] - totals_before[t] for t in [*types, "net"]},
+        }
+
+    return {
+        "mode": mode,
+        "stamp": stamp,
+        "would_insert": len(to_insert),
+        "would_skip": len(docs) - len(to_insert),
+        "years": years_out,
+    }
+
+
+# --- Seeding ---
+
+
 # --- AI Assistant (Claude) ---
 EMERGENT_LLM_KEY = os.environ.get("EMERGENT_LLM_KEY", "")
 AI_MODEL = ("anthropic", "claude-sonnet-4-6")

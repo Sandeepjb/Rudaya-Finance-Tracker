@@ -3,13 +3,18 @@ import { api, inr, formatApiError } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { toast } from "sonner";
-import { ArrowsClockwise, Archive, Eye, ShieldWarning, MagicWand } from "@phosphor-icons/react";
+import { ArrowsClockwise, Archive, Eye, ShieldWarning, MagicWand, ChartLineUp } from "@phosphor-icons/react";
+import PnlImpactDialog from "@/components/PnlImpactDialog";
 
 export default function BackupsTab({ onDidRestore }) {
   const [backups, setBackups] = useState([]);
   const [loading, setLoading] = useState(false);
   const [viewing, setViewing] = useState(null); // {stamp, count, rows}
   const [busy, setBusy] = useState(false);
+  const [pnlOpen, setPnlOpen] = useState(false);
+  const [pnlData, setPnlData] = useState(null);
+  const [pnlMode, setPnlMode] = useState("merge");
+  const [pnlLoading, setPnlLoading] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -49,6 +54,22 @@ export default function BackupsTab({ onDidRestore }) {
       if (onDidRestore) onDidRestore();
     } catch (e) { toast.error(formatApiError(e.response?.data?.detail)); }
     finally { setBusy(false); }
+  };
+
+  const previewImpact = async (stamp, mode) => {
+    setPnlMode(mode);
+    setPnlOpen(true);
+    setPnlLoading(true);
+    setPnlData(null);
+    try {
+      const fd = new FormData();
+      fd.append("mode", mode);
+      const r = await api.post(`/migrations/backups/${stamp}/dry-run`, fd, { headers: { "Content-Type": "multipart/form-data" } });
+      setPnlData(r.data);
+    } catch (e) {
+      toast.error(formatApiError(e.response?.data?.detail));
+      setPnlOpen(false);
+    } finally { setPnlLoading(false); }
   };
 
   return (
@@ -108,6 +129,9 @@ export default function BackupsTab({ onDidRestore }) {
                     <button data-testid={`backup-view-${b.stamp}`} onClick={() => openSnapshot(b.stamp)} disabled={busy} className="text-[11px] uppercase tracking-wider px-2 py-1 border border-neutral-300 hover:bg-neutral-100">
                       <Eye size={12} className="inline mr-1" /> Preview
                     </button>
+                    <button data-testid={`backup-impact-${b.stamp}`} onClick={() => previewImpact(b.stamp, "merge")} disabled={busy} className="text-[11px] uppercase tracking-wider px-2 py-1 border border-blue-500 text-blue-700 hover:bg-blue-50">
+                      <ChartLineUp size={12} className="inline mr-1" /> P&amp;L Impact
+                    </button>
                     <button data-testid={`backup-merge-${b.stamp}`} onClick={() => restore(b.stamp, "merge")} disabled={busy} className="text-[11px] uppercase tracking-wider px-2 py-1 border border-emerald-500 text-emerald-700 hover:bg-emerald-50">
                       <MagicWand size={12} className="inline mr-1" /> Merge
                     </button>
@@ -165,6 +189,12 @@ export default function BackupsTab({ onDidRestore }) {
           </div>
           {viewing && (
             <div className="flex justify-end gap-2 mt-4">
+              <Button data-testid="backup-preview-impact-merge" variant="outline" className="rounded-none border-blue-500 text-blue-700 hover:bg-blue-50" onClick={() => previewImpact(viewing.stamp, "merge")} disabled={busy}>
+                <ChartLineUp size={14} className="mr-2" /> P&amp;L Impact (Merge)
+              </Button>
+              <Button data-testid="backup-preview-impact-full" variant="outline" className="rounded-none border-blue-500 text-blue-700 hover:bg-blue-50" onClick={() => previewImpact(viewing.stamp, "full")} disabled={busy}>
+                <ChartLineUp size={14} className="mr-2" /> P&amp;L Impact (Full)
+              </Button>
               <Button data-testid="backup-preview-merge" variant="outline" className="rounded-none border-emerald-500 text-emerald-700 hover:bg-emerald-50" onClick={() => restore(viewing.stamp, "merge")} disabled={busy}>
                 <MagicWand size={14} className="mr-2" /> Merge (safe)
               </Button>
@@ -175,6 +205,8 @@ export default function BackupsTab({ onDidRestore }) {
           )}
         </DialogContent>
       </Dialog>
+
+      <PnlImpactDialog open={pnlOpen} onOpenChange={setPnlOpen} data={pnlData} mode={pnlMode === "full" ? "restore_full" : "restore_merge"} loading={pnlLoading} />
     </div>
   );
 }
