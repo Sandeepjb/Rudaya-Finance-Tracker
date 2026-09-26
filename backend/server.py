@@ -1401,7 +1401,253 @@ async def import_history(user: dict = Depends(require_admin), limit: int = 50):
              "inserted": d.get("inserted", 0),
              "skipped_duplicate": d.get("skipped_duplicate", 0),
              "backup_stamp": d.get("backup_stamp"),
-             "backed_up_count": d.get("backed_up_count", 0)} for d in docs]
+             "backed_up_count": d.get("backed_up_count", 0),
+             "restored_from": d.get("restored_from")} for d in docs]
+
+
+# --- Dry-run: preview month-by-month P&L delta if the CSV were imported now ---
+async def _month_totals_for_year(year: int) -> dict:
+    """Returns {Revenue: {m:sum}, Cost: {m:sum}, Expense: {m:sum}} for `year` from db.transactions."""
+    return await _actual_by_type_by_month(year)
+
+
+def _selected_rows_for_mode(rows: list, existing_fps: set, mode: str) -> list:
+    """Return list of parsed dicts that WOULD be inserted, given the mode + dedup rules."""
+    out = []
+    seen: set = set()
+    for r in rows:
+        if not r["valid"]:
+            continue
+        fp = r["fingerprint"]
+        if mode == "skip_duplicates" and (fp in existing_fps or fp in seen):
+            continue
+        if mode == "replace_existing" and fp in seen:
+            continue
+        seen.add(fp)
+        out.append(r["parsed"])
+    return out
+
+
+@api_router.post("/migrations/dry-run")
+async def dry_run_impact(
+    file: UploadFile = File(...),
+    mode: str = Form(...),
+    user: dict = Depends(require_admin),
+):
+    if mode not in ("skip_duplicates", "replace_existing"):
+        raise HTTPException(status_code=400, detail="mode must be 'skip_duplicates' or 'replace_existing'")
+    raw = await file.read()
+    rows, header_error = _parse_csv_rows(raw)
+    if header_error:
+        raise HTTPException(status_code=400, detail=header_error)
+    existing_fps = await _existing_fingerprints()
+    to_insert = _selected_rows_for_mode(rows, existing_fps, mode)
+
+    # Years touched: from the CSV rows we would insert. If empty, still return the current year for context.
+    years = sorted({int(r["date"][:4]) for r in to_insert})
+    if not years:
+        years = [datetime.now(timezone.utc).year]
+
+    types = ["Revenue", "Cost", "Expense"]
+    years_out = {}
+    for y in years:
+        before = await _month_totals_for_year(y)
+        contrib = _typed_bucket_zero()
+        for r in to_insert:
+            try:
+                dt = datetime.strptime(r["date"], "%Y-%m-%d")
+            except ValueError:
+                continue
+            if dt.year != y:
+                continue
+            contrib[r["type"]][dt.month] += r["amount"]
+
+        # In replace_existing mode the entire transactions collection is wiped BEFORE the CSV lands,
+        # so the "after" P&L for the year is only the imported rows (no legacy data).
+        if mode == "replace_existing":
+            after = _typed_bucket_zero()
+        else:
+            after = {t: dict(before[t]) for t in types}
+        for t in types:
+            for m in range(1, 13):
+                after[t][m] = after[t].get(m, 0) + contrib[t][m]
+
+        months = []
+        for m in range(1, 13):
+            b = {t: before[t][m] for t in types}
+            a = {t: after[t][m] for t in types}
+            b["net"] = b["Revenue"] - b["Cost"] - b["Expense"]
+            a["net"] = a["Revenue"] - a["Cost"] - a["Expense"]
+            months.append({
+                "month": m,
+                "label": datetime(y, m, 1).strftime("%b"),
+                "before": b,
+                "after": a,
+                "delta": {t: a[t] - b[t] for t in [*types, "net"]},
+            })
+
+        totals_before = {t: sum(before[t].values()) for t in types}
+        totals_after = {t: sum(after[t].values()) for t in types}
+        totals_before["net"] = totals_before["Revenue"] - totals_before["Cost"] - totals_before["Expense"]
+        totals_after["net"] = totals_after["Revenue"] - totals_after["Cost"] - totals_after["Expense"]
+        totals_delta = {t: totals_after[t] - totals_before[t] for t in [*types, "net"]}
+
+        years_out[str(y)] = {
+            "months": months,
+            "totals_before": totals_before,
+            "totals_after": totals_after,
+            "totals_delta": totals_delta,
+        }
+
+    return {
+        "mode": mode,
+        "would_insert": len(to_insert),
+        "years": years_out,
+    }
+
+
+# --- Backup snapshots: list + view + restore ---
+@api_router.get("/migrations/backups")
+async def list_backups(user: dict = Depends(require_admin)):
+    pipeline = [
+        {"$group": {
+            "_id": "$_backup_stamp",
+            "count": {"$sum": 1},
+            "admin_email": {"$first": "$_backed_up_by"},
+            "backed_up_at": {"$first": "$_backed_up_at"},
+            "revenue_total": {"$sum": {"$cond": [{"$eq": ["$type", "Revenue"]}, "$amount", 0]}},
+            "cost_total":    {"$sum": {"$cond": [{"$eq": ["$type", "Cost"]},    "$amount", 0]}},
+            "expense_total": {"$sum": {"$cond": [{"$eq": ["$type", "Expense"]}, "$amount", 0]}},
+        }},
+        {"$sort": {"_id": -1}},
+    ]
+    out = []
+    async for r in db.transaction_import_backups.aggregate(pipeline):
+        if not r.get("_id"):
+            continue
+        out.append({
+            "stamp": r["_id"],
+            "count": r["count"],
+            "admin_email": r.get("admin_email", ""),
+            "backed_up_at": r.get("backed_up_at", ""),
+            "totals": {
+                "Revenue": r.get("revenue_total", 0),
+                "Cost": r.get("cost_total", 0),
+                "Expense": r.get("expense_total", 0),
+            },
+        })
+    return out
+
+
+@api_router.get("/migrations/backups/{stamp}")
+async def get_backup(stamp: str, user: dict = Depends(require_admin), limit: int = 500):
+    docs = await db.transaction_import_backups.find({"_backup_stamp": stamp}).limit(limit).to_list(None)
+    if not docs:
+        raise HTTPException(status_code=404, detail="Backup snapshot not found")
+
+    def clean(d: dict) -> dict:
+        return {
+            "date": d.get("date", ""),
+            "type": d.get("type", ""),
+            "account": d.get("account", ""),
+            "amount": d.get("amount", 0),
+            "project_id": d.get("project_id", ""),
+            "notes": d.get("notes", ""),
+            "source": d.get("source", ""),
+            "created_at": d.get("created_at", ""),
+        }
+    return {"stamp": stamp, "count": len(docs), "rows": [clean(d) for d in docs]}
+
+
+def _strip_backup_meta(doc: dict) -> dict:
+    drop = {"_id", "_original_id", "_backup_stamp", "_backed_up_by", "_backed_up_at", "fingerprint"}
+    return {k: v for k, v in doc.items() if k not in drop}
+
+
+@api_router.post("/migrations/backups/{stamp}/restore")
+async def restore_backup(stamp: str, mode: str = Form(...), user: dict = Depends(require_admin)):
+    """Restore a previously stored backup snapshot.
+    - mode='full'  : wipe current transactions (auto-backup first!) then insert every row from the snapshot.
+    - mode='merge' : insert only rows from the snapshot whose fingerprint doesn't already exist.
+    Every restore is recorded in `import_history`."""
+    if mode not in ("full", "merge"):
+        raise HTTPException(status_code=400, detail="mode must be 'full' or 'merge'")
+    docs = await db.transaction_import_backups.find({"_backup_stamp": stamp}).to_list(None)
+    if not docs:
+        raise HTTPException(status_code=404, detail="Backup snapshot not found")
+
+    now_iso = datetime.now(timezone.utc).isoformat()
+    auto_backup_ref = None
+    if mode == "full":
+        # Safety net: back up the CURRENT state before we wipe it.
+        current = await db.transactions.find({}).to_list(None)
+        pre_count = len(current)
+        auto_stamp = f"prerestore-{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}"
+        if pre_count:
+            snap = []
+            for t in current:
+                cp = dict(t)
+                cp["_original_id"] = str(cp.pop("_id"))
+                cp["_backup_stamp"] = auto_stamp
+                cp["_backed_up_by"] = user["email"]
+                cp["_backed_up_at"] = now_iso
+                snap.append(cp)
+            await db.transaction_import_backups.insert_many(snap)
+        await db.transactions.delete_many({})
+        auto_backup_ref = {"stamp": auto_stamp, "count": pre_count}
+
+    existing_fps = await _existing_fingerprints()
+    to_insert = []
+    skipped = 0
+    seen: set = set()
+    for d in docs:
+        core = _strip_backup_meta(d)
+        # Ensure required fields exist to avoid inserting corrupt rows.
+        if not all(k in core for k in ("date", "type", "account", "amount", "project_id")):
+            continue
+        fp = _fingerprint(core)
+        if fp in existing_fps or fp in seen:
+            skipped += 1
+            continue
+        seen.add(fp)
+        core["fingerprint"] = fp
+        core.setdefault("notes", "")
+        core.setdefault("source", "restored_backup")
+        core.setdefault("created_at", now_iso)
+        core["restored_by"] = user["email"]
+        core["restored_from"] = stamp
+        to_insert.append(core)
+
+    inserted = 0
+    if to_insert:
+        res = await db.transactions.insert_many(to_insert)
+        inserted = len(res.inserted_ids)
+
+    history_doc = {
+        "filename": f"restore-from-{stamp}",
+        "mode": f"restore_{mode}",
+        "admin_email": user["email"],
+        "started_at": now_iso,
+        "completed_at": datetime.now(timezone.utc).isoformat(),
+        "total_rows": len(docs),
+        "invalid_rows": 0,
+        "inserted": inserted,
+        "skipped_duplicate": skipped,
+        "backup_stamp": auto_backup_ref["stamp"] if auto_backup_ref else None,
+        "backed_up_count": auto_backup_ref["count"] if auto_backup_ref else 0,
+        "restored_from": stamp,
+    }
+    hist_res = await db.import_history.insert_one(history_doc)
+
+    return {
+        "ok": True,
+        "mode": mode,
+        "restored_from": stamp,
+        "inserted": inserted,
+        "skipped_duplicate": skipped,
+        "history_id": str(hist_res.inserted_id),
+        "auto_backup": auto_backup_ref,
+    }
 
 
 # --- Seeding ---

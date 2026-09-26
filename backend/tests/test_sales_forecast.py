@@ -229,7 +229,7 @@ class TestForecastVsActual:
         if lf:
             client.delete(f"{API}/forecast/{lf[0]['id']}")
 
-    def test_report_totals_update_after_new_entry(self, client, created_ids):
+    def test_report_totals_update_after_new_entry(self, client, created_ids, txn_state_lock):
         before = client.get(f"{API}/reports/forecast-vs-actual", params={"year": YEAR}).json()["total_forecast_all"]
         sf = client.post(f"{API}/sales-forecast", json={"year": YEAR, "month": 4, "type": "Revenue",
                                                        "project_id": "", "amount": 250000,

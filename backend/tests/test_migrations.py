@@ -160,29 +160,30 @@ class TestMigrationImport:
         pre_count = len(snapshot)
         assert pre_count > 0, "expected seeded transactions to exist"
 
-        rows = [["2026-04-15", "Revenue", f"{self._fp}SalesR", 1000, f"{self._fp}P1", "fresh"]]
-        r = admin.post(f"{API}/migrations/import",
-                       files=_file(_csv_bytes(rows)),
-                       data={"mode": "replace_existing"})
-        assert r.status_code == 200, r.text
-        d_res = r.json()
-        assert d_res["mode"] == "replace_existing"
-        assert d_res["inserted"] == 1
-        assert d_res["backup"] is not None
-        assert d_res["backup"]["count"] == pre_count
+        try:
+            rows = [["2026-04-15", "Revenue", f"{self._fp}SalesR", 1000, f"{self._fp}P1", "fresh"]]
+            r = admin.post(f"{API}/migrations/import",
+                           files=_file(_csv_bytes(rows)),
+                           data={"mode": "replace_existing"})
+            assert r.status_code == 200, r.text
+            d_res = r.json()
+            assert d_res["mode"] == "replace_existing"
+            assert d_res["inserted"] == 1
+            assert d_res["backup"] is not None
+            assert d_res["backup"]["count"] == pre_count
 
-        # transactions now should equal just the imported row
-        after = admin.get(f"{API}/transactions").json()
-        assert len(after) == 1
-        assert after[0]["notes"] == "fresh"
+            # transactions now should equal just the imported row
+            after = admin.get(f"{API}/transactions").json()
+            assert len(after) == 1
+            assert after[0]["notes"] == "fresh"
 
-        # history should record this entry with a backup_stamp
-        hist = admin.get(f"{API}/migrations/history").json()
-        assert any(h["backup_stamp"] == d_res["backup"]["stamp"] and h["mode"] == "replace_existing" for h in hist)
-
-        # Restore the exact snapshot (with _id + source) so downstream tests see the seed data intact.
-        asyncio.get_event_loop().run_until_complete(wipe_and_restore(snapshot))
-        cl.close()
+            # history should record this entry with a backup_stamp
+            hist = admin.get(f"{API}/migrations/history").json()
+            assert any(h["backup_stamp"] == d_res["backup"]["stamp"] and h["mode"] == "replace_existing" for h in hist)
+        finally:
+            # ALWAYS restore the exact snapshot (with _id + source) so downstream tests see seed data intact.
+            asyncio.get_event_loop().run_until_complete(wipe_and_restore(snapshot))
+            cl.close()
         restored = len(admin.get(f"{API}/transactions").json())
         assert restored == pre_count, f"restore failed: {restored}/{pre_count}"
 

@@ -5,11 +5,14 @@ import { useAuth } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
 import {
   UploadSimple, FileCsv, CheckCircle, WarningCircle, ShieldWarning, ArrowsClockwise,
-  Copy, ArrowLeft, ArrowRight, Prohibit,
+  Copy, ArrowLeft, ArrowRight, Prohibit, ChartLineUp,
 } from "@phosphor-icons/react";
+import PnlImpactDialog from "@/components/PnlImpactDialog";
+import BackupsTab from "@/components/BackupsTab";
 
 const TEMPLATE = "date,type,account,amount,project_id,notes\n2026-04-15,Revenue,Sales - Solar,250000,PRJ-01,April invoice\n15/04/2026,Cost,Materials,50000,PRJ-01,Panels\n15-04-2026,Expense,Travel,3200,PRJ-01,Site visit\n";
 
@@ -30,6 +33,7 @@ function StepChip({ n, label, active, done }) {
 export default function DataMigration() {
   const { user } = useAuth();
   const isAdmin = user?.role === "admin";
+  const [activeTab, setActiveTab] = useState("import");
   const [step, setStep] = useState(1);
   const [file, setFile] = useState(null);
   const [previewing, setPreviewing] = useState(false);
@@ -39,6 +43,9 @@ export default function DataMigration() {
   const [result, setResult] = useState(null);
   const [history, setHistory] = useState([]);
   const [showInvalidOnly, setShowInvalidOnly] = useState(false);
+  const [pnlOpen, setPnlOpen] = useState(false);
+  const [pnlData, setPnlData] = useState(null);
+  const [pnlLoading, setPnlLoading] = useState(false);
   const fileRef = useRef(null);
 
   const loadHistory = useCallback(async () => {
@@ -103,6 +110,25 @@ export default function DataMigration() {
     }
   };
 
+  const runDryRun = async () => {
+    if (!file) return;
+    setPnlOpen(true);
+    setPnlLoading(true);
+    setPnlData(null);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      fd.append("mode", mode);
+      const r = await api.post("/migrations/dry-run", fd, { headers: { "Content-Type": "multipart/form-data" } });
+      setPnlData(r.data);
+    } catch (e) {
+      toast.error(formatApiError(e.response?.data?.detail));
+      setPnlOpen(false);
+    } finally {
+      setPnlLoading(false);
+    }
+  };
+
   const reset = () => {
     setFile(null);
     setPreview(null);
@@ -146,14 +172,22 @@ export default function DataMigration() {
         </Button>
       }
     >
-      {/* Stepper */}
-      <div className="flex items-center gap-6 mb-6" data-testid="migration-stepper">
-        <StepChip n={1} label="Upload & Preview" active={step === 1} done={step > 1} />
-        <div className="flex-1 h-px bg-neutral-300" />
-        <StepChip n={2} label="Choose Mode & Import" active={step === 2} done={step > 2} />
-        <div className="flex-1 h-px bg-neutral-300" />
-        <StepChip n={3} label="Result" active={step === 3} done={false} />
-      </div>
+      {/* Tabs: Import vs Backups */}
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="mb-6" data-testid="migration-tabs">
+        <TabsList className="rounded-none">
+          <TabsTrigger value="import" className="rounded-none" data-testid="tab-import">Import CSV</TabsTrigger>
+          <TabsTrigger value="backups" className="rounded-none" data-testid="tab-backups">Backups &amp; Restore</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="import" className="mt-6">
+          {/* Stepper */}
+          <div className="flex items-center gap-6 mb-6" data-testid="migration-stepper">
+            <StepChip n={1} label="Upload & Preview" active={step === 1} done={step > 1} />
+            <div className="flex-1 h-px bg-neutral-300" />
+            <StepChip n={2} label="Choose Mode & Import" active={step === 2} done={step > 2} />
+            <div className="flex-1 h-px bg-neutral-300" />
+            <StepChip n={3} label="Result" active={step === 3} done={false} />
+          </div>
 
       {/* Step 1 — Upload */}
       {step === 1 && (
@@ -318,14 +352,25 @@ export default function DataMigration() {
               <Button data-testid="preview-back-btn" variant="outline" className="rounded-none" onClick={() => setStep(1)}>
                 <ArrowLeft size={16} className="mr-2" /> Back
               </Button>
-              <Button
-                data-testid="run-import-btn"
-                onClick={runImport}
-                disabled={importing || preview.valid_rows === 0}
-                className={`rounded-none h-11 px-6 ${mode === "replace_existing" ? "bg-red-700 hover:bg-red-800" : "bg-neutral-900 hover:bg-neutral-700"}`}
-              >
-                {importing ? "Importing…" : (mode === "replace_existing" ? "Backup & Replace" : `Import ${Math.max(0, preview.valid_rows - preview.duplicates)} rows`)}
-              </Button>
+              <div className="flex gap-2">
+                <Button
+                  data-testid="dryrun-btn"
+                  variant="outline"
+                  className="rounded-none h-11 px-4 border-neutral-900"
+                  onClick={runDryRun}
+                  disabled={importing || preview.valid_rows === 0}
+                >
+                  <ChartLineUp size={16} className="mr-2" /> Preview P&amp;L Impact
+                </Button>
+                <Button
+                  data-testid="run-import-btn"
+                  onClick={runImport}
+                  disabled={importing || preview.valid_rows === 0}
+                  className={`rounded-none h-11 px-6 ${mode === "replace_existing" ? "bg-red-700 hover:bg-red-800" : "bg-neutral-900 hover:bg-neutral-700"}`}
+                >
+                  {importing ? "Importing…" : (mode === "replace_existing" ? "Backup & Replace" : `Import ${Math.max(0, preview.valid_rows - preview.duplicates)} rows`)}
+                </Button>
+              </div>
             </div>
           </div>
         </>
@@ -389,6 +434,14 @@ export default function DataMigration() {
           </table>
         </div>
       </div>
+        </TabsContent>
+
+        <TabsContent value="backups" className="mt-6">
+          <BackupsTab onDidRestore={loadHistory} />
+        </TabsContent>
+      </Tabs>
+
+      <PnlImpactDialog open={pnlOpen} onOpenChange={setPnlOpen} data={pnlData} mode={mode} loading={pnlLoading} />
     </Layout>
   );
 }
