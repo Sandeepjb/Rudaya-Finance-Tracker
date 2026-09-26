@@ -9,44 +9,25 @@
 - Pre-load historical data from uploaded Excel: yes (120 transactions, 16 projects, 37 accounts, 107 project IDs)
 - Currency: Indian Rupee ₹
 - Brand: Rudaya Powers Pvt. Ltd. — real logo displayed on Login + Sidebar
-- Administration section is always visible in the sidebar; non-admins see an "Admin only" block on gated pages.
+- Administration section is always visible in the sidebar; non-admins see an "Admin only" block on gated pages
 
 ## Core Modules
-- Transaction (date, type ∈ {Revenue, Cost, Expense}, account, amount, project_id, notes)
-- Sales Forecast (month-wise line items with optional project_id + type)
-- Quotations (with Revenue/Cost/Expense line items; number is unique)
-- Consolidated Forecast vs Actual (SF + non-lost quotations vs actuals per month by type)
-- Project-wise P&L with **click-through drilldown** (transactions + forecast-vs-actual chart + quotations scoped to that project)
-- Monthly report
-- Master data: Projects, Project IDs, Accounts (SoT for Budgets + Import)
-- Yearly Expense Budget vs Actual per Settings account
-- AI Assistant (Claude Sonnet 4.6 streaming with approval-gated write actions + voice STT/TTS)
-- Administration → Data Migration: Admin-only CSV import, dry-run P&L impact, backups & restore (with P&L Impact preview)
+- Transaction / Sales Forecast / Quotations / Consolidated Forecast vs Actual / Project P&L with drilldown / Monthly / Master Data / Yearly Expense Budget / AI Assistant (Claude Sonnet 4.6) / Data Migration (Import + Backups + Restore + Dry-run P&L Impact)
 
 ## Test History
-- iteration_1: 100% pass
-- iteration_2: 100% frontend / 95% backend (brute-force lockout regression, since fixed)
-- iteration_3: sales-forecast backend 16/16, consolidation math verified, UI e2e drawer flow verified
-- iteration_4 (2026-09-26): Admin-only CSV Import — frontend 100% pass, backend 50/50 pass
-- iteration_5 (2026-09-26): Dry-run P&L Impact + Backups & Restore — 57/57 backend pass
-- iteration_6 (2026-09-26): Project Drilldown + Copy Last Year + Backup P&L Impact — 65/65 backend pass
+- iterations 1–6 covered core, sales forecast, data migration, CSV import, backups & restore, project drilldown / copy last year / backup P&L impact
+- iteration 7 (2026-09-26): Edit-Before-Approve + PDF Attachments — 67/67 backend pass
 
-## Implemented (2026-09-26) — Batch of P1/P2 enhancements
-- **Admin CSV Import**: preview + import; SHA-256 fingerprint dedup (DB + in-file); Skip duplicates | Replace existing (auto-backup)
-- Brute-force login lockout (5 fails / 15 min → 423)
-- **Dry-run P&L Impact** on CSV: rich per-year dialog with month-by-month before + after + delta + Net-Δ sparklines
-- **Backups & Restore**: list every snapshot (`transaction_import_backups`), preview rows, **Merge** (idempotent) or **Full restore** (auto-backs up current state first). Every restore recorded in `import_history` with mode `restore_merge`/`restore_full`
-- **Project Drilldown** (P2): click any row in Project P&L → right-side sheet with tiles, Recharts line/bar charts of forecast vs actual (scoped to project · SF + non-lost quotations), full transactions table, quotations table
-- **Copy Last Year Forecast** (P2): one-tap dialog on Sales Forecast to clone last year's SF into next year, with optional quotation cloning (draft, `-COPYYYYY` suffix) and an overwrite toggle
-- **Backup P&L Impact** (P2 stretch): `POST /migrations/backups/{stamp}/dry-run mode=merge|full` — reuses the same rich P&L impact dialog so admins preview a restore's effect before committing
-- All admin-only routes gated by a shared `require_admin` FastAPI dependency
-- Tests: /app/backend/tests/test_migrations.py + test_migrations_extras.py + test_p2_features.py (22 focused tests); conftest.py filelock serializes destructive tests against report readers
+## Implemented (2026-09-26) — batch 4: Edit-Before-Approve + PDF Attachments
+- **Edit Before Approve**: New `PUT /api/ai/pending/{pid}` schema-validates edits against the target model. UI adds a "pencil" button on every pending AI proposal that opens a dialog to tweak amount / date / account / project / notes (transaction), amount / month / project (sales_forecast), or metadata (quotation) before approving. Approved records use the edited values.
+- **PDF Invoice Attachments (Emergent object storage)**: Reusable `AttachmentsPanel` on the transaction and quotation drawers. Uploads up to 10 PDFs/entity, 10 MB each, with soft-delete + inline download. Backend uses the platform's `INTEGRATION_PROXY_URL` object storage: `POST /api/attachments/{entity_type}/{entity_id}`, `GET /api/attachments/{entity_type}/{entity_id}` (list), `GET /api/attachments/{attachment_id}/download` (JWT via header or `?auth=`), `DELETE /api/attachments/{attachment_id}` (soft delete). Route order fixed so `/download` isn't shadowed by the list route. Metadata mirrored to `db.attachments` with `is_deleted` flag.
+- Tests: `/app/backend/tests/test_p3_features.py` — 2 test classes exercise PUT edit, schema validation, approve-after-edit, PDF-only enforcement, size / count limits, download auth, soft delete, and 404 paths.
 
 ## Backlog / Next
 - P1: Excel `.xlsx` export mirroring the original template + a Forecast sheet
-- P2: Edit-before-approve for AI-proposed transactions
-- P2: Attachments (invoice PDFs) via object storage
-- P3: Match cookie attributes on `delete_cookie` (secure/samesite) on logout
-- P3: AI Explain-Row for anomalies in Project P&L / Forecast
+- P2: Compare Projects mode on Project P&L (multi-select drilldown)
+- P3: Match cookie attributes on `delete_cookie` on logout
+- P3: AI Explain-Row for anomalies
 - P3: Custom AI wake word & Hindi voice support
 - P3: 30-second undo toast after AI approval
+- P3: Image-attachment support (JPEG/PNG for site photos)

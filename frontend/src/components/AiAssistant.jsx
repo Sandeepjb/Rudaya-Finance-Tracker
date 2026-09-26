@@ -3,8 +3,9 @@ import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
-import { Sparkle, PaperPlaneRight, User as UserIcon, Robot, Microphone, MicrophoneSlash, Check, X, Clock, SpeakerHigh, SpeakerX } from "@phosphor-icons/react";
+import { Sparkle, PaperPlaneRight, User as UserIcon, Robot, Microphone, MicrophoneSlash, Check, X, Clock, SpeakerHigh, SpeakerX, PencilSimple } from "@phosphor-icons/react";
 import { API, api, inr } from "@/lib/api";
+import PendingEditDialog from "@/components/PendingEditDialog";
 
 const SUGGESTIONS = [
   "Which project made the highest net profit so far?",
@@ -65,6 +66,7 @@ export default function AiAssistant() {
   const [streaming, setStreaming] = useState(false);
   const [sessionId, setSessionId] = useState("");
   const [pending, setPending] = useState([]);
+  const [editing, setEditing] = useState(null);
   const [listening, setListening] = useState(false);
   const [voiceSupported, setVoiceSupported] = useState(false);
   const [ttsSupported, setTtsSupported] = useState(false);
@@ -358,8 +360,9 @@ export default function AiAssistant() {
                     </div>
                     <div className="text-xs text-neutral-800 font-mono-tab truncate" title={summariseProposal(p)}>{summariseProposal(p)}</div>
                   </div>
-                  <button data-testid={`approve-${p.id}`} onClick={() => approveUi(p.id)} className="p-1.5 bg-emerald-600 hover:bg-emerald-700 text-white" title="Approve"><Check size={14} weight="bold" /></button>
-                  <button data-testid={`reject-${p.id}`} onClick={() => rejectUi(p.id)} className="p-1.5 bg-neutral-200 hover:bg-red-200 text-red-700" title="Reject"><X size={14} weight="bold" /></button>
+                    <button data-testid={`edit-${p.id}`} onClick={() => setEditing(p)} className="p-1.5 bg-neutral-100 hover:bg-yellow-200 text-neutral-700" title="Edit before approve"><PencilSimple size={14} weight="bold" /></button>
+                    <button data-testid={`approve-${p.id}`} onClick={() => approveUi(p.id)} className="p-1.5 bg-emerald-600 hover:bg-emerald-700 text-white" title="Approve"><Check size={14} weight="bold" /></button>
+                    <button data-testid={`reject-${p.id}`} onClick={() => rejectUi(p.id)} className="p-1.5 bg-neutral-200 hover:bg-red-200 text-red-700" title="Reject"><X size={14} weight="bold" /></button>
                 </div>
               ))}
             </div>
@@ -397,8 +400,7 @@ export default function AiAssistant() {
           </div>
 
           <div className="p-4 border-t border-neutral-200 bg-white">
-            <form onSubmit={(e) => { e.preventDefault(); send(); }} className="flex gap-2">
-              {voiceSupported && (
+            <form onSubmit={(e) => { e.preventDefault(); send(); }} className="flex gap-2">              {voiceSupported && (
                 <Button
                   type="button"
                   data-testid="ai-mic"
@@ -425,6 +427,12 @@ export default function AiAssistant() {
           </div>
         </SheetContent>
       </Sheet>
+      <PendingEditDialog
+        pending={editing}
+        open={!!editing}
+        onOpenChange={(o) => { if (!o) setEditing(null); }}
+        onSaved={(updated) => { setPending((prev) => prev.map((p) => (p.id === updated.id ? { ...p, data: updated.data } : p))); setEditing(null); }}
+      />
     </>
   );
 }

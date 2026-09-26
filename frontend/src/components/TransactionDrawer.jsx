@@ -7,6 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
+import AttachmentsPanel from "@/components/AttachmentsPanel";
 
 const TYPES = ["Revenue", "Cost", "Expense"];
 
@@ -109,6 +110,9 @@ export default function TransactionDrawer({ open, onOpenChange, editing, meta, o
           <Button data-testid="txn-save" onClick={save} disabled={disabled} className="w-full rounded-none bg-neutral-900 hover:bg-neutral-700 h-11">
             {getSaveLabel(saving, editing)}
           </Button>
+          <div className="pt-2 border-t border-neutral-200">
+            <AttachmentsPanel entityType="transaction" entityId={editing?.id} />
+          </div>
         </div>
       </SheetContent>
     </Sheet>

@@ -7,6 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Textarea } from "@/components/ui/textarea";
+import AttachmentsPanel from "@/components/AttachmentsPanel";
 import { toast } from "sonner";
 import { Plus, PencilSimple, Trash, FileText } from "@phosphor-icons/react";
 import { TypeBadge } from "@/components/TypeBadge";
@@ -362,6 +363,9 @@ function QuotationDrawer({ open, onOpenChange, editing, meta, onSaved, defaultYe
           <Button data-testid="q-save" onClick={save} disabled={disabled} className="w-full rounded-none bg-neutral-900 hover:bg-neutral-700 h-11">
             {getSaveLabel(saving, editing)}
           </Button>
+          <div className="pt-2 border-t border-neutral-200">
+            <AttachmentsPanel entityType="quotation" entityId={editing?.id} />
+          </div>
         </div>
       </SheetContent>
     </Sheet>

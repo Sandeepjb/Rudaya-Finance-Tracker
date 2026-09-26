@@ -17,13 +17,65 @@ from typing import List, Optional
 from bson import ObjectId
 from pymongo.errors import DuplicateKeyError
 
-from fastapi import FastAPI, APIRouter, HTTPException, Depends, Request, Response, Query, UploadFile, File, Form
-from fastapi.responses import StreamingResponse
+from fastapi import FastAPI, APIRouter, HTTPException, Depends, Request, Response, Query, UploadFile, File, Form, Header
+from fastapi.responses import StreamingResponse, Response as FastAPIResponse
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 from pydantic import BaseModel, Field, EmailStr
 
 from emergentintegrations.llm.chat import LlmChat, UserMessage, TextDelta, StreamDone
+
+import uuid as _uuid
+import requests as _http
+
+# --- Emergent Object Storage (attachments) ---
+STORAGE_BASE = (os.environ.get("INTEGRATION_PROXY_URL") or "").strip() or "https://integrations.emergentagent.com"
+STORAGE_URL = STORAGE_BASE.rstrip("/") + "/objstore/api/v1/storage"
+APP_NAME = "rudaya-finance"
+_storage_key = None
+MAX_ATTACH_BYTES = 10 * 1024 * 1024  # 10 MB per file
+MAX_ATTACH_PER_ENTITY = 10
+ALLOWED_ATTACH_TYPES = {"application/pdf"}
+ALLOWED_ATTACH_ENTITIES = {"transaction", "quotation"}
+
+
+def init_storage(force: bool = False):
+    global _storage_key
+    if _storage_key and not force:
+        return _storage_key
+    key = os.environ.get("EMERGENT_LLM_KEY")
+    if not key:
+        raise RuntimeError("EMERGENT_LLM_KEY not set — cannot init object storage")
+    r = _http.post(f"{STORAGE_URL}/init", json={"emergent_key": key}, timeout=30)
+    r.raise_for_status()
+    _storage_key = r.json()["storage_key"]
+    return _storage_key
+
+
+def put_object(path: str, data: bytes, content_type: str) -> dict:
+    key = init_storage()
+    r = _http.put(f"{STORAGE_URL}/objects/{path}",
+                  headers={"X-Storage-Key": key, "Content-Type": content_type},
+                  data=data, timeout=120)
+    if r.status_code == 404:
+        key = init_storage(force=True)
+        r = _http.put(f"{STORAGE_URL}/objects/{path}",
+                      headers={"X-Storage-Key": key, "Content-Type": content_type},
+                      data=data, timeout=120)
+    r.raise_for_status()
+    return r.json()
+
+
+def get_object(path: str) -> tuple:
+    key = init_storage()
+    r = _http.get(f"{STORAGE_URL}/objects/{path}",
+                  headers={"X-Storage-Key": key}, timeout=60)
+    if r.status_code == 404:
+        key = init_storage(force=True)
+        r = _http.get(f"{STORAGE_URL}/objects/{path}",
+                      headers={"X-Storage-Key": key}, timeout=60)
+    r.raise_for_status()
+    return r.content, r.headers.get("Content-Type", "application/octet-stream")
 
 # --- Setup ---
 mongo_url = os.environ['MONGO_URL']
@@ -1385,6 +1437,160 @@ async def reject_pending(pid: str, user: dict = Depends(get_current_user)):
     return {"ok": True}
 
 
+class PendingUpdateIn(BaseModel):
+    data: dict
+
+
+@api_router.put("/ai/pending/{pid}")
+async def update_pending(pid: str, payload: PendingUpdateIn, user: dict = Depends(get_current_user)):
+    """Edit the `data` payload of a still-pending AI proposal before approval."""
+    try:
+        oid = ObjectId(pid)
+    except Exception:
+        raise HTTPException(400, "Invalid id")
+    doc = await db.ai_pending_actions.find_one({"_id": oid, "created_by": user["email"]})
+    if not doc:
+        raise HTTPException(404, "Not found")
+    if doc["status"] != "pending":
+        raise HTTPException(400, f"Already {doc['status']}")
+    kind = doc["kind"]
+    try:
+        if kind == "transaction":
+            TransactionIn(**payload.data)
+        elif kind == "sales_forecast":
+            SalesForecastIn(**payload.data)
+        elif kind == "quotation":
+            QuotationIn(**payload.data)
+        else:
+            raise HTTPException(400, f"unsupported kind {kind}")
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(400, f"Invalid data: {e}")
+    await db.ai_pending_actions.update_one(
+        {"_id": oid},
+        {"$set": {"data": payload.data,
+                  "edited_at": datetime.now(timezone.utc).isoformat(),
+                  "edited_by": user["email"]}},
+    )
+    u = await db.ai_pending_actions.find_one({"_id": oid})
+    return {"id": str(u["_id"]), "kind": u["kind"], "data": u["data"], "status": u["status"]}
+
+
+# --- Attachments (Emergent Object Storage backed) ---
+def _attachment_out(d: dict) -> dict:
+    return {"id": str(d["_id"]), "entity_type": d["entity_type"], "entity_id": d["entity_id"],
+            "filename": d.get("filename", ""), "size": d.get("size", 0),
+            "content_type": d.get("content_type", "application/pdf"),
+            "uploaded_at": d.get("uploaded_at", ""), "uploaded_by": d.get("uploaded_by", "")}
+
+
+async def _entity_exists(entity_type: str, entity_id: str) -> bool:
+    try:
+        oid = ObjectId(entity_id)
+    except Exception:
+        return False
+    coll = db.transactions if entity_type == "transaction" else db.quotations
+    return bool(await coll.find_one({"_id": oid}))
+
+
+@api_router.post("/attachments/{entity_type}/{entity_id}")
+async def upload_attachment(entity_type: str, entity_id: str,
+                            file: UploadFile = File(...),
+                            user: dict = Depends(get_current_user)):
+    if entity_type not in ALLOWED_ATTACH_ENTITIES:
+        raise HTTPException(status_code=400, detail="entity_type must be transaction or quotation")
+    if not await _entity_exists(entity_type, entity_id):
+        raise HTTPException(status_code=404, detail=f"{entity_type} not found")
+    ct = file.content_type or "application/octet-stream"
+    if ct not in ALLOWED_ATTACH_TYPES:
+        raise HTTPException(status_code=400, detail="Only PDF attachments are allowed")
+    data = await file.read()
+    if not data:
+        raise HTTPException(status_code=400, detail="Empty file")
+    if len(data) > MAX_ATTACH_BYTES:
+        raise HTTPException(status_code=400, detail=f"File exceeds {MAX_ATTACH_BYTES // (1024 * 1024)} MB limit")
+    existing = await db.attachments.count_documents({
+        "entity_type": entity_type, "entity_id": entity_id, "is_deleted": {"$ne": True}
+    })
+    if existing >= MAX_ATTACH_PER_ENTITY:
+        raise HTTPException(status_code=400, detail=f"Max {MAX_ATTACH_PER_ENTITY} attachments per {entity_type}")
+    safe_name = (file.filename or "invoice.pdf").rsplit("/", 1)[-1][:120]
+    path = f"{APP_NAME}/{entity_type}/{entity_id}/{_uuid.uuid4()}.pdf"
+    try:
+        result = put_object(path, data, ct)
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Storage upload failed: {e}")
+    doc = {"entity_type": entity_type, "entity_id": entity_id,
+           "storage_path": result.get("path", path), "filename": safe_name,
+           "content_type": ct, "size": result.get("size", len(data)),
+           "uploaded_at": datetime.now(timezone.utc).isoformat(),
+           "uploaded_by": user["email"], "is_deleted": False}
+    r = await db.attachments.insert_one(doc)
+    doc["_id"] = r.inserted_id
+    return _attachment_out(doc)
+
+
+@api_router.get("/attachments/{attachment_id}/download")
+async def download_attachment(attachment_id: str, request: Request, auth: Optional[str] = Query(None)):
+    token = request.cookies.get("access_token") or auth
+    if not token:
+        auth_h = request.headers.get("Authorization", "")
+        if auth_h.startswith("Bearer "):
+            token = auth_h[7:]
+    if not token:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    try:
+        jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+    except Exception:
+        raise HTTPException(status_code=401, detail="Invalid or expired token")
+    try:
+        oid = ObjectId(attachment_id)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid id")
+    doc = await db.attachments.find_one({"_id": oid, "is_deleted": {"$ne": True}})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Attachment not found")
+    try:
+        content, ct = get_object(doc["storage_path"])
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Storage read failed: {e}")
+    return FastAPIResponse(
+        content=content,
+        media_type=doc.get("content_type", ct or "application/pdf"),
+        headers={"Content-Disposition": f'inline; filename="{doc.get("filename", "invoice.pdf")}"'},
+    )
+
+
+@api_router.get("/attachments/{entity_type}/{entity_id}")
+async def list_attachments(entity_type: str, entity_id: str, user: dict = Depends(get_current_user)):
+    if entity_type not in ALLOWED_ATTACH_ENTITIES:
+        raise HTTPException(status_code=400, detail="entity_type must be transaction or quotation")
+    docs = await db.attachments.find({
+        "entity_type": entity_type, "entity_id": entity_id, "is_deleted": {"$ne": True}
+    }).sort("uploaded_at", -1).to_list(100)
+    return [_attachment_out(d) for d in docs]
+
+
+@api_router.delete("/attachments/{attachment_id}")
+async def delete_attachment(attachment_id: str, user: dict = Depends(get_current_user)):
+    try:
+        oid = ObjectId(attachment_id)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid id")
+    r = await db.attachments.update_one(
+        {"_id": oid, "is_deleted": {"$ne": True}},
+        {"$set": {"is_deleted": True,
+                  "deleted_at": datetime.now(timezone.utc).isoformat(),
+                  "deleted_by": user["email"]}},
+    )
+    if r.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Attachment not found")
+    return {"ok": True}
+
+
+
+
 # --- Data Migration: Admin-only CSV Import ---
 REQUIRED_CSV_HEADERS = ["date", "type", "account", "amount", "project_id", "notes"]
 ALLOWED_TXN_TYPES = {"Revenue", "Cost", "Expense"}
@@ -1979,6 +2185,12 @@ async def startup():
     await db.transactions.create_index("fingerprint")
     await db.transaction_import_backups.create_index("_backup_stamp")
     await db.import_history.create_index("completed_at")
+    await db.attachments.create_index([("entity_type", 1), ("entity_id", 1), ("is_deleted", 1)])
+    try:
+        init_storage()
+        logger.info("Emergent object storage initialised")
+    except Exception as e:
+        logger.warning(f"Object storage init failed at startup — attachments will retry on first upload: {e}")
     await seed_all()
 
 
