@@ -510,10 +510,7 @@ def parse_pdf_statement_lines(lines: List[str], bank_name: str, bank_account: st
         if not amount:
             errors.append("missing amount")
         if not direction:
-            direction = "credit" if re.search(r"\b(neft cr|imps cr|credit|cr-|by transfer|deposit|received)\b", narration, re.IGNORECASE) else \
-                "debit" if re.search(r"\b(upi|pos|atm|debit|dr-|to transfer|paid|purchase|charges|emi)\b", narration, re.IGNORECASE) else None
-        if not direction:
-            errors.append("direction not determinable")
+            errors.append("debit/credit column placement not confirmed by running balance — ambiguous")
         if not narration:
             errors.append("missing narration")
         ref = ""
@@ -523,7 +520,9 @@ def parse_pdf_statement_lines(lines: List[str], bank_name: str, bank_account: st
         txn = {"bank_name": bank_name, "bank_account": bank_account, "transaction_date": date or "", "direction": direction or "",
                "amount": amount or 0, "narration": re.sub(r"\s+", " ", narration).strip()[:500], "bank_reference": ref,
                "source": "csv", "source_message_id": "", "source_raw_text": ln_join(r)}
-        out.append({"row": i, "txn": txn, "errors": errors, "balance": parse_amount(nums[-1]) if nums else None})
+        out.append({"row": i, "txn": txn, "errors": errors, "balance": parse_amount(nums[-1]) if nums else None,
+                    "raw_row": {"line": ln_join(r)}, "running_balance": parse_amount(nums[-1]) if nums else None,
+                    "parsed_debit": amount if direction == "debit" else None, "parsed_credit": amount if direction == "credit" else None})
     return out
 
 
@@ -555,29 +554,45 @@ def _detect_pdf_bank(lines: List[str]) -> str:
 
 
 async def _pdf_preview(raw: bytes, bank_name: str, bank_account: str) -> dict:
+    from bank_parsers.statement import totals_report
+    from bank_parsers.saraswat import SaraswatParser
     if len(raw) > MAX_PDF_BYTES:
         raise HTTPException(413, "PDF exceeds 10 MB")
     if not raw.startswith(b"%PDF"):
         raise HTTPException(422, "Not a PDF file")
     try:
-        lines = _pdf_lines(raw)
+        pages = _pdf_pages(raw)
     except Exception as e:
         raise HTTPException(422, f"Could not read PDF: {e}")
+    lines = [ln for _, ln in pages]
     if len(" ".join(lines)) < 40:
         raise HTTPException(422, "No extractable text — this looks like a scanned/image PDF (OCR not supported in this phase)")
     bank = bank_name or _detect_pdf_bank(lines)
     if not bank_account:
         m = re.search(r"(?:Account\s*(?:No|Number)\.?\s*:?\s*)([X\*\d ]{6,})", " ".join(lines[:80]), re.IGNORECASE)
         bank_account = re.sub(r"\s", "", m.group(1)) if m else ""
-    parsed = parse_pdf_statement_lines(lines, bank, bank_account)
+    statement_totals = None
+    if bank == "Saraswat Bank":
+        parsed, statement_totals, _ = SaraswatParser.parse_statement_lines(lines)
+        for p in parsed:
+            p["txn"]["bank_account"] = bank_account
+    else:
+        parsed = parse_pdf_statement_lines(lines, bank, bank_account)
+        for p in parsed:
+            p.setdefault("warnings", [])
+            p.setdefault("parse_confidence", 100 if not p["errors"] else 0)
+            p["needs_review"] = bool(p["errors"])
+    page_of = {ln: pg for pg, ln in pages}
+    for p in parsed:
+        p["source_page"] = page_of.get((p.get("raw_row") or {}).get("line", ""), None)
+        p["raw_text"] = (p.get("raw_row") or {}).get("line", "")
     if not parsed:
         raise HTTPException(422, "No transaction rows detected (expected lines starting with a date)")
     fps = set()
     for p in parsed:
         p["fingerprint"] = bank_fingerprint(p["txn"]) if not p["errors"] else None
         if p["fingerprint"] and p["fingerprint"] in fps:
-            p["errors"] = ["duplicate within file"]
-            p["fingerprint"] = None
+            p["errors"], p["needs_review"], p["fingerprint"] = ["duplicate within file"], True, None
         elif p["fingerprint"]:
             fps.add(p["fingerprint"])
     existing = set()
@@ -588,7 +603,20 @@ async def _pdf_preview(raw: bytes, bank_name: str, bank_account: str) -> dict:
         p["already_ingested"] = bool(p["fingerprint"] and p["fingerprint"] in existing)
     return {"bank_name": bank, "bank_account_masked": mask_account(bank_account), "total": len(parsed),
             "valid": sum(1 for p in parsed if not p["errors"]), "invalid": sum(1 for p in parsed if p["errors"]),
-            "already_ingested": sum(1 for p in parsed if p["already_ingested"]), "rows": parsed, "pages_text_lines": len(lines)}
+            "needs_review": sum(1 for p in parsed if p.get("needs_review")),
+            "already_ingested": sum(1 for p in parsed if p["already_ingested"]),
+            "totals": totals_report(parsed, statement_totals), "rows": parsed, "pages_text_lines": len(lines)}
+
+
+def _pdf_pages(raw: bytes) -> list:
+    import pdfplumber
+    out = []
+    with pdfplumber.open(io.BytesIO(raw)) as pdf:
+        for i, page in enumerate(pdf.pages, 1):
+            for ln in (page.extract_text() or "").splitlines():
+                if ln.strip():
+                    out.append((i, ln.strip()))
+    return out
 
 
 @router.post("/statement/pdf/preview")

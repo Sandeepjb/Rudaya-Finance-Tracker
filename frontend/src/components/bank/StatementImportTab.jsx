@@ -8,7 +8,7 @@ import { UploadSimple, FileCsv, CheckCircle, WarningCircle } from "@phosphor-ico
 import { DirectionBadge } from "./ConfidenceBadge";
 import { fmtDate } from "@/lib/bankInbox";
 
-const FIELDS = ["date", "narration", "debit", "credit", "amount", "direction", "reference"];
+const FIELDS = ["date", "narration", "debit_amount", "credit_amount", "running_balance", "amount", "direction", "bank_reference"];
 const sel = "rounded-none border border-neutral-300 h-8 px-1 text-xs bg-white w-full";
 
 export default function StatementImportTab({ onImported }) {
@@ -83,10 +83,20 @@ export default function StatementImportTab({ onImported }) {
                 </div>
               ))}
             </div>}
+            {preview.totals && (
+              <div className="mt-3 border border-neutral-200 p-2 text-xs grid grid-cols-2 md:grid-cols-4 gap-2" data-testid="statement-totals">
+                <div><div className="text-[10px] uppercase text-neutral-500">Statement debit total</div><div className="font-mono-tab">{preview.totals.statement_debit_total != null ? inr(preview.totals.statement_debit_total) : "— (not in file)"}</div></div>
+                <div><div className="text-[10px] uppercase text-neutral-500">Parsed debit total</div><div className="font-mono-tab">{inr(preview.totals.parsed_debit_total)}</div><div className={`font-mono-tab ${preview.totals.debit_difference ? "text-red-700" : "text-emerald-700"}`} data-testid="debit-difference">diff {preview.totals.debit_difference != null ? inr(preview.totals.debit_difference) : "n/a"}</div></div>
+                <div><div className="text-[10px] uppercase text-neutral-500">Statement credit total</div><div className="font-mono-tab">{preview.totals.statement_credit_total != null ? inr(preview.totals.statement_credit_total) : "— (not in file)"}</div>{preview.totals.closing_balance && <div className="text-neutral-500">closing {preview.totals.closing_balance}</div>}</div>
+                <div><div className="text-[10px] uppercase text-neutral-500">Parsed credit total</div><div className="font-mono-tab">{inr(preview.totals.parsed_credit_total)}</div><div className={`font-mono-tab ${preview.totals.credit_difference ? "text-red-700" : "text-emerald-700"}`} data-testid="credit-difference">diff {preview.totals.credit_difference != null ? inr(preview.totals.credit_difference) : "n/a"}</div></div>
+                {preview.totals.warnings?.length > 0 && <div className="col-span-full text-amber-800 bg-amber-50 border border-amber-300 p-2" data-testid="statement-totals-warning">{preview.totals.warnings.join(" · ")}</div>}
+              </div>
+            )}
             <div className="flex items-center justify-between mt-3">
               <div className="text-xs text-neutral-600 flex gap-4" data-testid="statement-summary">
                 <span><CheckCircle size={14} className="inline text-emerald-600" /> {preview.valid} valid</span>
                 <span><WarningCircle size={14} className="inline text-red-600" /> {preview.invalid} invalid</span>
+                <span data-testid="statement-needs-review"><WarningCircle size={14} className="inline text-amber-600" /> {preview.needs_review ?? 0} needs parsing review</span>
                 <span>{preview.already_ingested} already in inbox (skipped)</span>
                 <span>{preview.total} rows</span>
               </div>
@@ -99,18 +109,19 @@ export default function StatementImportTab({ onImported }) {
           <div className="bg-white border border-neutral-200 overflow-auto max-h-[420px]">
             <table className="w-full text-xs" data-testid="statement-preview-table">
               <thead className="bg-neutral-50 text-[10px] uppercase tracking-wider text-neutral-500 sticky top-0">
-                <tr><th className="p-2 text-left">#</th><th className="p-2 text-left">Date</th><th className="p-2 text-left">Dir</th><th className="p-2 text-right">Amount</th><th className="p-2 text-left">Narration</th><th className="p-2 text-left">Ref</th><th className="p-2 text-left">Status</th></tr>
+                <tr><th className="p-2 text-left">#</th><th className="p-2 text-left">Date</th><th className="p-2 text-left">Dir</th><th className="p-2 text-right">Amount</th><th className="p-2 text-right">Balance</th><th className="p-2 text-left">Narration</th><th className="p-2 text-left">Ref</th><th className="p-2 text-left">Status</th></tr>
               </thead>
               <tbody>
                 {preview.rows.map((r) => (
-                  <tr key={r.row} className={`border-t border-neutral-100 ${r.errors.length ? "bg-red-50" : r.already_ingested ? "opacity-50" : ""}`} data-testid="statement-row">
+                  <tr key={r.row} className={`border-t border-neutral-100 ${r.errors.length ? "bg-amber-50" : r.already_ingested ? "opacity-50" : ""}`} data-testid="statement-row">
                     <td className="p-2 font-mono-tab">{r.row}</td>
                     <td className="p-2 font-mono-tab">{fmtDate(r.txn.transaction_date) || "—"}</td>
                     <td className="p-2">{r.txn.direction ? <DirectionBadge direction={r.txn.direction} /> : "—"}</td>
-                    <td className="p-2 text-right font-mono-tab">{inr(r.txn.amount)}</td>
+                    <td className="p-2 text-right font-mono-tab">{r.txn.amount ? inr(r.txn.amount) : "—"}</td>
+                    <td className="p-2 text-right font-mono-tab text-neutral-500">{r.running_balance != null ? `${inr(r.running_balance)} ${r.balance_direction || ""}` : "—"}</td>
                     <td className="p-2 max-w-[320px] truncate" title={r.txn.narration}>{r.txn.narration}</td>
                     <td className="p-2 font-mono-tab">{r.txn.bank_reference}</td>
-                    <td className="p-2">{r.errors.length ? <span className="text-red-700">{r.errors.join(", ")}</span> : r.already_ingested ? "already ingested" : <span className="text-emerald-700">ready</span>}</td>
+                    <td className="p-2">{r.needs_review || r.errors.length ? <span className="text-amber-800" data-testid="row-needs-review">Needs Parsing Review: {r.errors.join(", ")}</span> : r.already_ingested ? "already ingested" : <span className="text-emerald-700">ready{r.warnings?.length ? ` · ${r.warnings.join("; ")}` : ""}</span>}</td>
                   </tr>
                 ))}
               </tbody>

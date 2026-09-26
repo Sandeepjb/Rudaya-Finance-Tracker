@@ -52,7 +52,7 @@ COLUMN_ALIASES = {
 }
 BANK_HINTS = {"ICICI Bank": ["value date", "transaction remarks", "withdrawal amount (inr", "deposit amount (inr"],
               "HDFC Bank": ["chq./ref.no.", "withdrawal amt.", "deposit amt.", "closing balance"],
-              "Saraswat Bank": ["particulars", "tran date"]}
+              "Saraswat Bank": ["dr amount", "cr amount", "total amount", "particulars", "instruments"]}
 
 
 def _norm_header(h: str) -> str:
@@ -92,10 +92,11 @@ def read_statement(raw: bytes) -> tuple:
     lines = [ln for ln in text.splitlines() if ln.strip()]
     reader_rows = list(csv.reader(lines))
     hdr_idx = None
+    from bank_parsers.statement import HEADER_ALIASES, normalize_header
     for i, row in enumerate(reader_rows[:40]):
-        normed = [_norm_header(c) for c in row]
-        has_date = any(any(a == h or a in h for a in COLUMN_ALIASES["date"]) for h in normed)
-        has_nar = any(any(a == h or a in h for a in COLUMN_ALIASES["narration"]) for h in normed)
+        normed = [normalize_header(c) for c in row]
+        has_date = any(any(a == h or a in h for a in HEADER_ALIASES["date"]) for h in normed)
+        has_nar = any(any(a == h or a in h for a in HEADER_ALIASES["narration"]) for h in normed)
         if has_date and has_nar and len([c for c in row if c.strip()]) >= 3:
             hdr_idx = i
             break
@@ -146,32 +147,45 @@ def row_to_txn(row: dict, mapping: dict, bank_name: str, bank_account: str, idx:
 
 
 async def _preview_rows(raw: bytes, bank_name: str, bank_account: str, mapping_json: str) -> dict:
+    from bank_parsers.statement import (detect_mapping as st_detect, normalize_row, is_total_row, totals_report,
+                                        extract_statement_totals)
     headers, rows = read_statement(raw)
     mapping = json.loads(mapping_json) if mapping_json else {}
     mapping = {k: v for k, v in mapping.items() if v}
-    if not mapping:
-        mapping = detect_mapping(headers)
+    mapping = _legacy_mapping_keys(mapping) if mapping else st_detect(headers)
     bank = bank_name or detect_bank(headers) or "Unknown Bank"
-    parsed = []
-    fps = set()
+    statement_totals = extract_statement_totals(rows, mapping)
+    parsed, fps = [], set()
     for i, r in enumerate(rows):
-        txn, errs = row_to_txn(r, mapping, bank, bank_account, i)
-        fp = bank_fingerprint(txn) if not errs else None
+        if is_total_row(r, mapping):
+            continue
+        p = normalize_row(r, mapping, bank, bank_account, parse_any_date)
+        p["row"] = i + 1
+        fp = bank_fingerprint(p["txn"]) if not p["errors"] else None
         if fp and fp in fps:
-            errs = ["duplicate within file"]
-        fps.add(fp)
-        parsed.append({"row": i + 1, "txn": txn, "errors": errs, "fingerprint": fp})
-    valid_fps = [p["fingerprint"] for p in parsed if not p["errors"]]
+            p["errors"], p["needs_review"], fp = ["duplicate within file"], True, None
+        if fp:
+            fps.add(fp)
+        p["fingerprint"] = fp
+        parsed.append(p)
     existing = set()
-    if valid_fps:
-        async for d in db.bank_transactions.find({"fingerprint": {"$in": valid_fps}, "status": {"$ne": "duplicate"}},
-                                                 {"fingerprint": 1}):
+    if fps:
+        async for d in db.bank_transactions.find({"fingerprint": {"$in": list(fps)}, "status": {"$ne": "duplicate"}}, {"fingerprint": 1}):
             existing.add(d["fingerprint"])
     for p in parsed:
         p["already_ingested"] = bool(p["fingerprint"] and p["fingerprint"] in existing)
     return {"headers": headers, "mapping": mapping, "bank_name": bank, "total": len(parsed),
             "valid": sum(1 for p in parsed if not p["errors"]), "invalid": sum(1 for p in parsed if p["errors"]),
-            "already_ingested": sum(1 for p in parsed if p["already_ingested"]), "rows": parsed}
+            "needs_review": sum(1 for p in parsed if p["needs_review"]),
+            "already_ingested": sum(1 for p in parsed if p["already_ingested"]),
+            "totals": totals_report(parsed, statement_totals), "rows": parsed}
+
+
+_LEGACY_KEYS = {"debit": "debit_amount", "credit": "credit_amount", "reference": "bank_reference"}
+
+
+def _legacy_mapping_keys(m: dict) -> dict:
+    return {_LEGACY_KEYS.get(k, k): v for k, v in m.items()}
 
 
 MAX_STATEMENT_BYTES = 5 * 1024 * 1024
