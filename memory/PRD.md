@@ -67,6 +67,8 @@
 - UI tab "Import Bank Statement" (AzureStatementTab.jsx). Tests: `tests/test_azure_statement_import.py` (8) — suite 138/138; frontend iteration_11.
 - Pending: user must supply AZURE endpoint; ICICI/HDFC statement samples for their normalizers.
 
+- Post-test fixes (iteration_11/12): closing-balance display, Azure diagnostics wording, background send with progress polling (`send_progress`, statuses sending→sent, per-row send_failed), duplicates & confirmed-direction rows count toward totals, blank-particulars rows → Needs Review. Real statement: 72 rows, 1 needs review (row with blank particulars in the PDF), totals reconcile 0.00 → status WARNING (honest) until the admin corrects that row.
+
 ## Backlog / Next
 - P1 (approved for later): Phase 2 Power Automate / SharePoint ingestion; Bank Reconciliation
 - P1: Excel `.xlsx` export mirroring the original template + a Forecast sheet

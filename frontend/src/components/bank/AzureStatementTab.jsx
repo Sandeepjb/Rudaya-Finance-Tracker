@@ -161,7 +161,7 @@ export default function AzureStatementTab({ onSent }) {
             </div>
           </div>
           {sendRes && <div className={`bg-white border border-l-4 p-3 text-sm ${sendRes.error ? "border-red-600" : sendRes.running ? "border-amber-500" : "border-emerald-600"}`} data-testid="az-send-result">
-            {sendRes.error ? "Send did not complete — some rows may already be in the Pending inbox; re-open this analysis to see per-row status." : sendRes.running ? `Sending… ${sendRes.done ?? 0} / ${sendRes.total ?? sel.size} processed (${sendRes.sent ?? 0} pending, ${sendRes.duplicates ?? 0} duplicates)` : `Sent ${sendRes.sent} to Bank Inbox (Pending approval), ${sendRes.duplicates} resolved as duplicates, ${(sendRes.skipped || []).length} skipped. No Finance transactions were created.`}
+            {sendRes.error ? "Send did not complete — some rows may already be in the Pending inbox; re-open this analysis to see per-row status." : sendRes.running ? `Sending… ${sendRes.done ?? 0} / ${sendRes.total ?? sel.size} processed (${sendRes.sent ?? 0} pending, ${sendRes.duplicates ?? 0} duplicates)` : `Sent ${sendRes.sent} to Bank Inbox (Pending approval), ${sendRes.duplicates} resolved as duplicates, ${(sendRes.skipped || []).length} skipped${sendRes.failed ? `, ${sendRes.failed} FAILED (see row status)` : ""}. No Finance transactions were created.`}
           </div>}
         </>
       )}

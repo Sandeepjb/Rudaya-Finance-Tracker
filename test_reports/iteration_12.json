@@ -1,0 +1,29 @@
+{
+  "summary": "Frontend-only retest of the 3 defects reported in iteration_11 against /bank-transactions → Import Bank Statement (Azure) tab, using the real Saraswat_2025_26.pdf fixture and admin login. All three defects are now fixed. (1) az-test-btn toast now reads 'Not configured — missing AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT on the server' and does NOT list _KEY (key is present) — matches diagnostics. (2) recon-closing-balance Statement column now shows ₹6,98,693 (previously ₹698) with parsed ₹6,98,693 and diff ₹0; az-recon-status = MATCHED; Debit ₹44,55,611 / Credit ₹45,60,612 all reconcile. (3) Send is now a background job: POST /send returns immediately, az-send-result appears with 'Sending… 0 / 70 processed' and polls every ~2.5s, incrementing to 'Sending… 69 / 70' then final 'Sent 69 to Bank Inbox (Pending approval), 0 resolved as duplicates, 0 skipped. No Finance transactions were created.' Total run ~365s (~6 min) with NO 502 anywhere on /send. Pending tab count went 8 → 77 (+69) as expected. Re-uploading the same PDF → az-previous → az-view-previous still shows MATCHED (72 detected · 70 valid · 0 needs review · 2 duplicate) and az-send-btn is disabled (statement processing_status = sent).",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [
+      {"flow": "Send Valid Transactions to Bank Inbox (final tally)", "issue": "70 valid rows were selected (sel.size=70) but the final az-send-result reads 'Sent 69, 0 duplicates, 0 skipped' — total 69, not 70. Pending count also went up by only 69 (8 → 77). One row appears to have been silently dropped during the background send worker. Minor because reconciliation of the parsed statement still MATCHED and the UI transitioned to sent, but the arithmetic of sent + duplicates + skipped should equal len(rows) submitted. Consider inspecting _send_worker for row-count accounting (unexpected exception per row that increments 'done' without adding to sent/duplicates/skipped).", "affected_selectors": ["[data-testid=\"az-send-result\"]", "[data-testid=\"tab-pending\"]"]}
+    ],
+    "design_issues": []
+  },
+  "test_report_links": [],
+  "action_items": [
+    "MINOR: Investigate 1-row accounting discrepancy in _send_worker — 70 selected → 69 sent + 0 dup + 0 skipped. Ensure every processed row is bucketed (sent | duplicate | skipped) so the sum equals the input list.",
+    "OPTIONAL cleanup: this run added 69 new pending Bank Inbox items (Saraswat statement); purge if not needed for the next agent."
+  ],
+  "critical_code_review_comments": [
+    "AzureStatementTab.jsx line 11 — money() now correctly strips commas via regex [^0-9.-]; formatting bug is resolved.",
+    "AzureStatementTab.jsx send() poll loop iterates 400 x 2.5s = ~16 min — reasonable upper bound given ~5s/row × 70 rows, but consider surfacing an explicit user-visible timeout badge if polling exhausts without terminal state.",
+    "az-send-result 'sent' arithmetic should always satisfy sent + duplicates + skipped == rows.length; add a defensive log on backend when it doesn't."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "N/A (frontend-only run)", "frontend": "~95% — all 3 original defects verified fixed; single minor accounting off-by-one in send tally"},
+  "test_credentials": "sandeepjb2014@gmail.com / Rudaya@1246 (admin) — from /app/memory/test_credentials.md",
+  "seed_data_creation": "+69 new pending Bank Inbox messages from a fresh Saraswat send (Pending 8 → 77). The Saraswat statement import is now in processing_status=sent so any future re-analysis will show az-previous and disabled send button — this is the expected new state.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "All 3 iteration_11 defects are fixed. DB now has the Saraswat statement in 'sent' status with 69 rows in Bank Inbox. Any re-upload of /app/backend/tests/fixtures/saraswat_2025_26.pdf will land on the az-previous branch and az-send-btn will remain disabled. To test send again from a clean state, clear bank_inbox_messages + set statement_imports.processing_status back to 'analyzed'. Key testids used: tab-azure, tab-pending, az-test-btn, az-diagnostics, az-file-input, az-analyze-btn, az-previous, az-view-previous, az-summary, az-counts, az-recon-status, recon-closing-balance, recon-debit, recon-credit, az-send-btn, az-send-result. Send takes ~5s/row (~6 min for 70 rows) — poll patiently.",
+  "rca of the issue": "Original 3 defects verified fixed via frontend E2E: (1) money() regex now strips commas → closing balance renders correct ₹6,98,693. (2) Backend /azure/test error message now includes the specific missing var name; frontend surfaces it directly. (3) POST /send became a fire-and-forget background job returning immediately, plus GET /statement-imports/{id} returns send_progress + processing_status which the UI polls every 2.5s — no more 502 on long ~6-min sends. Only remaining oddity: 1 of 70 selected rows disappears from the sent/duplicate/skipped tally (Sent 69, 0, 0). Non-blocking but should be tracked as a data-quality bug in _send_worker."
+}

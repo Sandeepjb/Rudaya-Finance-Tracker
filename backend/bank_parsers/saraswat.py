@@ -118,6 +118,9 @@ class SaraswatParser(BaseParser):
         for i, r in enumerate(rows, 1):
             r["row"] = i
             r["txn"]["narration"] = re.sub(r"\s+", " ", r["txn"]["narration"]).strip()
+            if not r["txn"]["narration"] and not r["errors"]:
+                r["errors"].append("missing narration — particulars could not be associated with this row")
+                r["needs_review"], r["parse_confidence"] = True, 0
             if not r["txn"]["bank_reference"]:
                 m = re.search(r"\b([A-Z]{2,6}\d{8,}|[A-Z0-9]{12,})\b", r["txn"]["narration"])
                 r["txn"]["bank_reference"] = m.group(1) if m else ""

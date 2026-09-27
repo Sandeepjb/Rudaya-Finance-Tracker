@@ -198,7 +198,7 @@ async def send_to_inbox(sid: str, payload: SendIn, user: dict = Depends(require_
     await _rebuild(d, user["email"])
     chosen = [r["row"] for r in d["rows"] if r["row"] in set(payload.rows) and r["status"] == "valid"]
     skipped = [{"row": r["row"], "reason": r["status"]} for r in d["rows"] if r["row"] in set(payload.rows) and r["status"] != "valid"]
-    progress = {"total": len(chosen), "done": 0, "sent": 0, "duplicates": 0, "skipped": skipped, "started_at": now_iso()}
+    progress = {"total": len(chosen), "done": 0, "sent": 0, "duplicates": 0, "failed": 0, "skipped": skipped, "started_at": now_iso()}
     await COL.update_one({"_id": d["_id"]}, {"$set": {"rows": d["rows"], "processing_status": "sending", "send_progress": progress}})
     asyncio.create_task(_send_worker(d["_id"], chosen, user["email"]))
     return {"started": True, "statement_import_id": sid, **progress}
@@ -218,6 +218,7 @@ async def _send_worker(oid, chosen: list, actor: str):
             results.append(bt["id"])
         except Exception as e:  # keep going; surface per-row failure
             r["status"], r["send_error"] = "send_failed", str(e)[:200]
+            prog["failed"] = prog.get("failed", 0) + 1
         prog["done"] += 1
         await COL.update_one({"_id": oid}, {"$set": {"rows": d["rows"], "send_progress": prog}})
     await COL.update_one({"_id": oid}, {"$set": {"processing_status": "sent" if prog["sent"] else "analyzed",

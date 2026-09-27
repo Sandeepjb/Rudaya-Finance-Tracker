@@ -10,7 +10,9 @@ def _d(v) -> Decimal:
 
 
 def reconcile(rows: List[dict], statement_totals: Optional[dict], opening_balance: Optional[float]) -> dict:
-    valid = [r for r in rows if not r.get("needs_review") and r["txn"].get("direction") in ("debit", "credit")]  # duplicates are still statement rows
+    # rows whose direction was confirmed (by Dr/Cr cell or balance delta) count toward totals, even if flagged for
+    # narration/reference review; ambiguous rows have no direction and are excluded
+    valid = [r for r in rows if r["txn"].get("direction") in ("debit", "credit") and r["txn"].get("amount")]
     pd = sum((_d(r["txn"]["amount"]) for r in valid if r["txn"]["direction"] == "debit"), Decimal("0.00"))
     pc = sum((_d(r["txn"]["amount"]) for r in valid if r["txn"]["direction"] == "credit"), Decimal("0.00"))
     st = statement_totals or {}
