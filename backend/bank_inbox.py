@@ -520,6 +520,7 @@ async def _pending_or_400(tid: str) -> dict:
 
 import bank_inbox_ext  # noqa: E402,F401  literal routes must register before /{tid}
 import bank_inbox_phase2  # noqa: E402,F401
+import bank_statements.router  # noqa: E402,F401
 
 
 # ---------- single txn ----------
@@ -633,6 +634,8 @@ async def ensure_indexes():
     await seed_templates()
     from bank_inbox_phase2 import ensure_phase2_indexes
     await ensure_phase2_indexes()
+    from bank_statements.router import ensure_indexes as ensure_stmt_indexes
+    await ensure_stmt_indexes()
     await db.bank_transactions.update_many({"status": "approved", "finance_transaction_id": {"$ne": None},
                                             "reconciliation_status": {"$in": [None, "unmatched"]}},
                                            {"$set": {"reconciliation_status": "matched",

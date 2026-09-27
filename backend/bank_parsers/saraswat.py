@@ -9,9 +9,12 @@ STATEMENT_COLUMNS = ["Date", "Dr Amount", "Cr Amount", "Total Amount", "Particul
 _NUM = r"\d{1,3}(?:,\d{3})*(?:\.\d{2})|\d+\.\d{2}"
 # date, then one or two amounts, then balance with CR/DR, then particulars (+ optional instrument at the end)
 _LINE_RE = re.compile(
-    rf"^(?P<date>\d{{1,2}}[-/]\d{{1,2}}[-/]\d{{2,4}})\s+(?P<a1>{_NUM})\s+(?:(?P<a2>{_NUM})\s+)?(?P<bal>{_NUM})\s*(?P<bd>CR|DR)\b\s*(?P<rest>.*)$",
+    rf"^(?P<date>\d{{1,2}}[-/]\d{{1,2}}[-/]\d{{2,4}})\s+(?P<mid>.*?)\s*(?P<a1>{_NUM})\s+(?:(?P<a2>{_NUM})\s+)?(?P<bal>{_NUM})\s*(?P<bd>CR|DR)\b\s*(?P<rest>.*)$",
     re.IGNORECASE)
-_TOTAL_RE = re.compile(rf"^(?:Grand\s+)?Total\b\D*(?P<dr>{_NUM})\s+(?P<cr>{_NUM})", re.IGNORECASE)
+_TOTAL_RE = re.compile(rf"^(?:Grand\s+)?Totals?\b[^\d]*(?P<dr>{_NUM})\s+(?P<cr>{_NUM})", re.IGNORECASE)
+_DATE_ONLY_BAL_RE = re.compile(rf"^(?P<date>\d{{1,2}}[-/]\d{{1,2}}[-/]\d{{2,4}})\s+(?P<rest>.*?)(?P<bal>{_NUM})\s*(?P<bd>CR|DR)\s*$", re.IGNORECASE)
+_DATE_LINE_RE = re.compile(r"^\d{1,2}[-/]\d{1,2}[-/]\d{2,4}\b")
+_SKIP_RE = re.compile(r"(?i)^(date\s+particulars|statement of accounts|page\s*:|\*+\s*end of statement|closing balance|branch|address|city|phone|gst|account no|name\s*:|customer id|purpose|from date|current|limit|total sanction|joint|run date|:\s*p)")
 
 
 class SaraswatParser(BaseParser):
@@ -34,7 +37,7 @@ class SaraswatParser(BaseParser):
             return None
         a1, a2 = parse_decimal(m.group("a1")), parse_decimal(m.group("a2")) if m.group("a2") else None
         bal, bd = balance_parts(f"{m.group('bal')} {m.group('bd')}")
-        rest = m.group("rest").strip()
+        rest = (m.group("mid").strip() + " " + m.group("rest").strip()).strip()
         toks = rest.split()
         instrument = toks[-1] if toks and re.fullmatch(r"[A-Z0-9/-]{6,}", toks[-1]) and len(toks) > 1 else ""
         narration = " ".join(toks[:-1] if instrument else toks)
@@ -67,27 +70,55 @@ class SaraswatParser(BaseParser):
 
     @staticmethod
     def parse_statement_lines(lines: List[str]) -> tuple:
-        """Return (rows, statement_totals, opening_balance)."""
-        rows, totals, prev = [], None, None
+        """Flattened-text fallback (real Saraswat PDF): particulars wrap onto the lines above and below the dated line.
+        The line right after a dated line continues that row; remaining lines before the next dated line start the next row.
+        Direction is only ever confirmed by the running-balance delta. Returns (rows, statement_totals, last_balance)."""
+        rows, totals, prev, pending_prefix, last_row = [], None, None, [], None
         for ln in lines:
-            ob = re.search(rf"(?i)opening\s+balance\D*({_NUM})\s*(CR|DR)?", ln)
+            ln = ln.strip()
+            if not ln:
+                continue
+            ob = re.search(rf"(?i)opening\s+balance.*?(?:Rs\.?\s*)?({_NUM})\s*(CR|DR)", ln)
             if ob and prev is None:
                 prev = parse_decimal(ob.group(1))
                 continue
-            t = _TOTAL_RE.match(ln.strip())
+            t = _TOTAL_RE.match(ln)
             if t:
                 cb = re.search(rf"({_NUM})\s*(CR|DR)", ln[t.end():], re.IGNORECASE)
                 totals = {"debit": parse_decimal(t.group("dr")), "credit": parse_decimal(t.group("cr")),
                           "closing_balance": f"{cb.group(1)} {cb.group(2).upper()}" if cb else None}
+                last_row = None
                 continue
-            r = SaraswatParser.parse_statement_line(ln, prev)
-            if r is None:
-                if rows and not re.match(r"^\d{1,2}[-/]\d{1,2}[-/]\d{2,4}", ln) and not re.match(r"(?i)^(date|page|statement|account)", ln):
-                    rows[-1]["txn"]["narration"] = (rows[-1]["txn"]["narration"] + " " + ln.strip())[:500]
+            if _SKIP_RE.match(ln) or re.fullmatch(rf"{_NUM}\s*(CR|DR)", ln, re.IGNORECASE):
                 continue
-            rows.append(r)
-            if r["running_balance"] is not None:
-                prev = Decimal(str(r["running_balance"]))
+            if _DATE_LINE_RE.match(ln):
+                r = SaraswatParser.parse_statement_line(ln, prev)
+                if r is None:
+                    m = _DATE_ONLY_BAL_RE.match(ln)
+                    if m:  # dated informational row with no amount (e.g. charge memo) – balance unchanged
+                        prev = parse_decimal(m.group("bal")) if prev is None else prev
+                        pending_prefix, last_row = [], None
+                        continue
+                    pending_prefix.append(ln)
+                    continue
+                if pending_prefix:
+                    r["txn"]["narration"] = (" ".join(pending_prefix) + " " + r["txn"]["narration"]).strip()[:500]
+                    pending_prefix = []
+                rows.append(r)
+                last_row = r
+                if r["running_balance"] is not None:
+                    prev = Decimal(str(r["running_balance"]))
+                continue
+            if last_row is not None:
+                last_row["txn"]["narration"] = (last_row["txn"]["narration"] + " " + ln)[:500]
+                last_row["continuation_lines"] = last_row.get("continuation_lines", 0) + 1
+                last_row = None
+            else:
+                pending_prefix.append(ln)
         for i, r in enumerate(rows, 1):
             r["row"] = i
+            r["txn"]["narration"] = re.sub(r"\s+", " ", r["txn"]["narration"]).strip()
+            if not r["txn"]["bank_reference"]:
+                m = re.search(r"\b([A-Z]{2,6}\d{8,}|[A-Z0-9]{12,})\b", r["txn"]["narration"])
+                r["txn"]["bank_reference"] = m.group(1) if m else ""
         return rows, totals, prev
