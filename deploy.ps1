@@ -120,8 +120,20 @@ if ($LASTEXITCODE -ne 0) {
     }
     if ($bad.Count -gt 0) { Fail ("Containers not healthy: " + ($bad -join ", ")) }
 
-    Step "HTTP health check"
-    & curl.exe --fail --silent --show-error --max-time 20 $HealthUrl *> $null
+   Step "HTTP health check"
+
+& curl.exe `
+    --fail `
+    --silent `
+    --show-error `
+    --max-time 20 `
+    --ssl-no-revoke `
+    -k `
+    $HealthUrl *> $null
+
+if ($LASTEXITCODE -ne 0) *
+    Fail "HTTPS health check fail*d: $HealthUrl"
+}
     if ($LASTEXITCODE -ne 0) { Fail "HTTPS health check failed: $HealthUrl" }
 
     Step "Database preservation check"
