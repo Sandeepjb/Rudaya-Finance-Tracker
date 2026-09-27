@@ -59,6 +59,14 @@
 - Preview/import responses now include needs_review, totals{}, per-row parsed_debit/credit, running_balance, balance_direction, parse_confidence, warnings, raw_row/raw_text/source_page. UI shows totals block, differences, warning banner, Balance column, Needs Parsing Review rows. Mapping keys renamed (debit_amount/credit_amount/bank_reference; legacy keys accepted).
 - Tests: `tests/test_saraswat_statement.py` (7) — full suite 130/130; frontend+backend iteration_10 pass. Compile OK, no tabs.
 
+## Implemented (2026-09-27) — batch 9: Azure Document Intelligence statement import
+- `backend/bank_statements/` (azure_document_intelligence.py = provider abstraction: Azure prebuilt-layout via azure-ai-documentintelligence aio SDK + LocalPdfplumberProvider fallback; statement_normalizer.py = table→rows, bank alias dicts, multiline merge, confidence bands; reconciliation.py = Decimal totals/closing balance, MATCHED/WARNING/FAILED; statement_models.py; router.py).
+- Endpoints (`/api/bank-transactions/statement-imports`): `POST /analyze` (multipart, provider auto|azure|local, sha256 doc fingerprint → "previously analyzed"), `GET ""`, `GET /{id}`, `PUT /{id}/rows/{row}` (correction, original preserved), `POST /{id}/send` (→ ingest_one → Pending; never Finance), `GET /{id}/audit`, `GET /azure/status`, `POST /azure/test`.
+- Collection `bank_statement_imports` (+indexes document_fingerprint, created_at). Env: `AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT` (still EMPTY — user provided key only), `AZURE_DOCUMENT_INTELLIGENCE_KEY`, optional `BANK_STATEMENT_MAX_MB`, `AZURE_DOCUMENT_INTELLIGENCE_TIMEOUT`.
+- Saraswat flattened-text parser (bank_parsers/saraswat.py) now handles real PDF layout Date|Particulars|Instruments|Dr|Cr|Total with wrapped particulars; **real 2025-26 statement reconciles exactly** (72 rows, 4,455,610.67 / 4,560,612.33 / 698,692.97 CR, all diffs 0.00) — fixture `tests/fixtures/saraswat_2025_26.pdf`.
+- UI tab "Import Bank Statement" (AzureStatementTab.jsx). Tests: `tests/test_azure_statement_import.py` (8) — suite 138/138; frontend iteration_11.
+- Pending: user must supply AZURE endpoint; ICICI/HDFC statement samples for their normalizers.
+
 ## Backlog / Next
 - P1 (approved for later): Phase 2 Power Automate / SharePoint ingestion; Bank Reconciliation
 - P1: Excel `.xlsx` export mirroring the original template + a Forecast sheet

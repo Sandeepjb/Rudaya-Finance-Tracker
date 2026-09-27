@@ -29,7 +29,7 @@ def _out(d: dict, rows: bool = True) -> dict:
         "filename", "bank_name", "statement_account_masked", "statement_period_from", "statement_period_to", "extraction_provider",
         "model_id", "analysis_timestamp", "processing_status", "page_count", "transactions_detected", "transactions_valid",
         "transactions_ambiguous", "transactions_duplicate", "reconciliation", "reconciliation_status", "created_by", "created_at",
-        "document_fingerprint", "sent_count", "sent_at", "error", "mapping", "headers")}}
+        "document_fingerprint", "sent_count", "sent_at", "error", "mapping", "headers", "send_progress")}}
     if rows:
         o["rows"] = [_row_out(r) for r in d.get("rows", [])]
     return o
@@ -80,7 +80,8 @@ async def azure_status(user: dict = Depends(require_admin)):
 @router.post("/statement-imports/azure/test")
 async def azure_test(user: dict = Depends(require_admin)):
     if not AzureDocumentIntelligenceProvider.configured():
-        return {"configured": False, "reachable": False, "message": "AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT / _KEY not set on the server"}
+        missing = [k for k in ("AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT", "AZURE_DOCUMENT_INTELLIGENCE_KEY") if not os.environ.get(k)]
+        return {"configured": False, "reachable": False, "message": f"Not configured — missing {', '.join(missing)} on the server"}
     from reportlab.pdfgen import canvas
     import io
     buf = io.BytesIO()
@@ -189,28 +190,44 @@ async def correct_row(sid: str, row: int, payload: RowCorrectionIn, user: dict =
 
 @router.post("/statement-imports/{sid}/send")
 async def send_to_inbox(sid: str, payload: SendIn, user: dict = Depends(require_admin)):
+    """Starts a background send (classification per row can take seconds); poll GET /statement-imports/{id}."""
+    import asyncio
     d = await COL.find_one({"_id": _oid(sid)})
     if not d or d["processing_status"] != "analyzed":
         raise HTTPException(400, "Import is not in analyzed state")
     await _rebuild(d, user["email"])
-    chosen = [r for r in d["rows"] if r["row"] in set(payload.rows)]
-    results, skipped = [], []
-    for r in chosen:
-        if r["status"] != "valid":
-            skipped.append({"row": r["row"], "reason": r["status"]})
+    chosen = [r["row"] for r in d["rows"] if r["row"] in set(payload.rows) and r["status"] == "valid"]
+    skipped = [{"row": r["row"], "reason": r["status"]} for r in d["rows"] if r["row"] in set(payload.rows) and r["status"] != "valid"]
+    progress = {"total": len(chosen), "done": 0, "sent": 0, "duplicates": 0, "skipped": skipped, "started_at": now_iso()}
+    await COL.update_one({"_id": d["_id"]}, {"$set": {"rows": d["rows"], "processing_status": "sending", "send_progress": progress}})
+    asyncio.create_task(_send_worker(d["_id"], chosen, user["email"]))
+    return {"started": True, "statement_import_id": sid, **progress}
+
+
+async def _send_worker(oid, chosen: list, actor: str):
+    d = await COL.find_one({"_id": oid})
+    prog = d["send_progress"]
+    results = []
+    for r in d["rows"]:
+        if r["row"] not in chosen:
             continue
-        bt = await ingest_one(BankTxnIn(**{**r["txn"], "source": "csv", "source_message_id": f"stmt:{sid}:{r['row']}"}), user["email"])
-        r["bank_transaction_id"], r["status"] = bt["id"], "sent" if bt["status"] == "pending" else "duplicate"
-        results.append({"row": r["row"], "bank_transaction_id": bt["id"], "status": bt["status"]})
-    sent = sum(1 for x in results if x["status"] == "pending")
-    await COL.update_one({"_id": d["_id"]}, {"$set": {"rows": d["rows"], "processing_status": "sent" if sent else d["processing_status"],
-                                                      "sent_count": (d.get("sent_count") or 0) + sent, "sent_at": now_iso()}})
-    await db.bank_ingestion_log.insert_one({"timestamp": now_iso(), "actor": user["email"], "channel": "statement_import", "count": len(results),
-                                            "pending": sent, "duplicates": len(results) - sent, "sources": ["csv"], "filename": d["filename"],
-                                            "bank": d["bank_name"], "ids": [x["bank_transaction_id"] for x in results], "statement_import_id": sid})
-    await audit("statement_sent_to_inbox", user["email"], None, new={"sent": sent, "duplicates": len(results) - sent, "skipped": len(skipped)},
-                extra={"statement_import_id": sid})
-    return {"sent": sent, "duplicates": len(results) - sent, "skipped": skipped, "results": results}
+        try:
+            bt = await ingest_one(BankTxnIn(**{**r["txn"], "source": "csv", "source_message_id": f"stmt:{oid}:{r['row']}"}), actor)
+            r["bank_transaction_id"], r["status"] = bt["id"], "sent" if bt["status"] == "pending" else "duplicate"
+            prog["sent" if bt["status"] == "pending" else "duplicates"] += 1
+            results.append(bt["id"])
+        except Exception as e:  # keep going; surface per-row failure
+            r["status"], r["send_error"] = "send_failed", str(e)[:200]
+        prog["done"] += 1
+        await COL.update_one({"_id": oid}, {"$set": {"rows": d["rows"], "send_progress": prog}})
+    await COL.update_one({"_id": oid}, {"$set": {"processing_status": "sent" if prog["sent"] else "analyzed",
+                                                 "sent_count": (d.get("sent_count") or 0) + prog["sent"], "sent_at": now_iso(),
+                                                 "send_progress": {**prog, "finished_at": now_iso()}}})
+    await db.bank_ingestion_log.insert_one({"timestamp": now_iso(), "actor": actor, "channel": "statement_import", "count": len(results),
+                                            "pending": prog["sent"], "duplicates": prog["duplicates"], "sources": ["csv"], "filename": d["filename"],
+                                            "bank": d["bank_name"], "ids": results, "statement_import_id": str(oid)})
+    await audit("statement_sent_to_inbox", actor, None, new={"sent": prog["sent"], "duplicates": prog["duplicates"], "skipped": len(prog["skipped"])},
+                extra={"statement_import_id": str(oid)})
 
 
 @router.get("/statement-imports/{sid}/audit")

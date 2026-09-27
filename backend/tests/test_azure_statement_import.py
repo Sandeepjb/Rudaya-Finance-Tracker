@@ -65,12 +65,12 @@ def saraswat_lines(tag, ambiguous=False):
     ls = ["Saraswat Co-operative Bank Ltd STATEMENT OF ACCOUNTS", "Account No. : CAELT/372100100000319",
           "From Date : 01/04/2025 To Date :30/04/2025 Opening Balance As On 01/04/2025 : Rs.593,691.31 CR",
           "Date Particulars Instruments Dr Amount Cr Amount Total Amount",
-          f"NEFT/CHASN52025040189460416 {tag}",
+          f"NEFT/CHASN5{tag}0189460416",
           "01-04-2025 336,654.00 930,345.31 CR",
           "/GOODYEAR SOUTH AS",
           f"02-04-2025 IB/TRF/VISHAL {tag}/salary 40,000.00 890,345.31 CR",
           f"03-04-2025 SMS CHARGES {tag} 4.94 890,340.37 CR",
-          f"04-04-2025 NEFT/DEUTN52025040351000145 {tag} 1,740,399.71 2,630,740.08 CR"]
+          f"04-04-2025 NEFT/DEUTN5{tag}0351000145 1,740,399.71 2,630,740.08 CR"]
     if ambiguous:
         ls.append(f"05-04-2025 WEIRD {tag} 100.00 200.00 2,630,740.08 CR")
     ls += ["Totals / Balance :- 40,004.94 2,077,053.71 2,630,740.08 CR", "Closing Balance 2,630,740.08 CR"]
@@ -246,8 +246,16 @@ class TestHttpFlow:
         assert again["previously_analyzed"] and again["previous"]["statement_import_id"] == sid
         # send rows 1-4 (+5 corrected) to inbox → pending, no finance txns
         s = admin.post(f"{SI}/{sid}/send", json={"rows": [1, 2, 3, 4, 5]}).json()
-        assert s["sent"] == 5 and s["duplicates"] == 0
-        for x in s["results"]:
+        assert s["started"] and s["total"] == 5
+        import time
+        for _ in range(60):
+            cur = admin.get(f"{SI}/{sid}").json()
+            if cur["processing_status"] != "sending":
+                break
+            time.sleep(2)
+        assert cur["processing_status"] == "sent" and cur["send_progress"]["sent"] == 5 and cur["send_progress"]["duplicates"] == 0
+        for x in cur["rows"]:
+            assert x["status"] == "sent"
             bt = admin.get(f"{API}/bank-transactions/{x['bank_transaction_id']}").json()
             assert bt["status"] == "pending" and bt["finance_transaction_id"] is None and bt["suggestion"] is not None
         assert len(admin.get(f"{API}/transactions").json()) == before
@@ -257,6 +265,7 @@ class TestHttpFlow:
         raw2 = _pdf(saraswat_lines(t) + ["extra footer line"])
         imp2 = _post(admin, raw2, f"{t}-2.pdf").json()
         assert imp2["transactions_duplicate"] == 4 and all(x["duplicate_of_bank_transaction_id"] for x in imp2["rows"] if x["status"] == "duplicate")
+        assert imp2["reconciliation"]["debit_difference"] == "0.00"  # duplicates still count toward statement totals
         actions = [a["action"] for a in admin.get(f"{SI}/{sid}/audit").json()]
         for needed in ("statement_pdf_uploaded", "statement_analysis_started", "statement_analysis_completed", "statement_normalized",
                        "statement_row_corrected", "statement_reconciliation_warning", "statement_sent_to_inbox"):

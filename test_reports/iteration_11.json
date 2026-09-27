@@ -1,0 +1,42 @@
+{
+  "summary": "Frontend-only Playwright end-to-end testing of the new 'Import Bank Statement' (Azure) tab against the real Saraswat 5-page PDF. Most flows pass: tab renders, diagnostics show 'Azure configured: No' + 'Local fallback', az-test-btn toasts the 'not configured' message, no Azure key value leaks into HTML, PDF analyse loads az-summary with Saraswat Bank + 5 pages + 72 detected, previous-analysis banner appears on re-upload with working 'View Previous Analysis', row-correction editor opens showing 'Original extraction' and appending ' QAUI3' to row 1 narration saves + row shows 'Corrected' badge, CSV export triggers a download, invalid PDF (renamed .txt) shows toast 'Not a valid PDF (signature check failed)', and regression tabs (Import Statement / Reconciliation / Pending) load without errors and Pending shows Saraswat cards. Three real defects found — see below.",
+  "backend_issues": {"critical": [], "minor": [
+    {"endpoint": "POST /api/bank-transactions/statement-imports/{id}/send", "issue": "Console shows 502 Bad Gateway during send, yet DB commits partially (Pending went 12 → 24). Frontend never receives response so az-send-result panel is never rendered and user only sees the earlier optimistic toast. Likely upstream ingress timeout on a long-running send (~30s+). Consider chunked/async send or higher gateway timeout."}
+  ]},
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "AzureStatementTab / ReconRow Closing Balance", "issue": "Statement Closing Balance renders as '₹698' instead of '₹6,98,693'. Root cause: line 120 does `statement_closing_balance?.replace(/[^\\d.,-]/g, '')` which leaves the Indian-format commas ('6,98,692.97'); then `money() → parseFloat` stops at the first comma and returns 6.98 → displayed as ₹698. Fix: strip commas as well, e.g. `.replace(/[^0-9.\\-]/g, '')` before parseFloat.", "selector": "[data-testid=\"recon-closing-balance\"]", "priority": "HIGH"},
+      {"component": "AzureStatementTab az-diagnostics vs az-test toast", "issue": "Diagnostics report 'Azure configured: No' and 'Key present: Yes' but the Test Azure Connection toast says 'AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT / _KEY not set on the server'. Inconsistent — either key_present should be No, or the toast wording should reflect endpoint-only being missing. Confusing for admins.", "selector": "[data-testid=\"az-diagnostics\"]", "priority": "MEDIUM"},
+      {"component": "AzureStatementTab az-send-result", "issue": "When the send API errors (or gateway 502s), no az-send-result panel is shown even though rows were partially sent. There is no user-visible error toast either in this environment — user sees stale UI while Pending inbox silently grew.", "selector": "[data-testid=\"az-send-result\"]", "priority": "HIGH"}
+    ],
+    "integration_issues": [
+      {"flow": "Send Valid Transactions to Bank Inbox", "issue": "Only 12 pending rows were created (Pending badge 12 → 24) while the analysis showed 70 valid selected. Likely a mix of prior-run duplicates + the 502; no client-side reconciliation shown. Also the reconciliation for a re-analysis shows Credit diff = ₹7,812 = sum of the two rows marked duplicate (72 detected · 70 valid · 2 duplicate) — parsed_credit_total appears to exclude duplicate rows so recon flips from MATCHED to FAILED once any row has been sent earlier. Backend recon likely needs to include duplicate rows in parsed totals (they were parsed from *this* statement, just already in inbox from a prior send).", "affected_selectors": ["[data-testid=\"az-recon-status\"]", "[data-testid=\"recon-credit\"]", "[data-testid=\"az-send-result\"]"]}
+    ],
+    "design_issues": [
+      {"screen": "Import Bank Statement", "issues": ["Statement Closing Balance number renders visibly wrong (₹698 vs actual ₹6,98,693) — clear numeric/formatting bug", "az-recon-message text lacks period after 'RECONCILIATION WARNING' when messages array is empty; visually reads slightly abrupt", "Regression tabs 'M365 Queue' and 'Parser Test' do NOT have data-testid values `tab-m365` / `tab-parser-test` (they render as text-only buttons). Adds fragility for future automated tests."]}
+    ]
+  },
+  "test_report_links": [],
+  "action_items": [
+    "Fix ReconRow Statement Closing Balance parsing: strip commas before parseFloat in AzureStatementTab.jsx (or normalize on backend to a numeric string).",
+    "Reconcile the az-diagnostics 'Key present: Yes' vs the Test Azure toast 'endpoint/key not set' wording.",
+    "Investigate 502 on POST /statement-imports/{id}/send and ensure client always sees a definitive success/failure state (az-send-result or error toast).",
+    "Backend: include duplicate rows in parsed_debit_total / parsed_credit_total during reconciliation so re-analyzing a partially-sent statement doesn't regress from MATCHED to FAILED.",
+    "Add data-testid=\"tab-m365\" and data-testid=\"tab-parser-test\" to the bank-transactions tab bar for testability parity with other tabs.",
+    "Cleanup: this run created 12 new pending items with narration containing 'QAUI3' or Saraswat rows; consider purge via `db.bank_inbox_messages.delete_many({...})` if not needed."
+  ],
+  "critical_code_review_comments": [
+    "AzureStatementTab.jsx line 120 – closing balance display bug (see UI bug #1). This is a live defect visible to admins.",
+    "AzureStatementTab.jsx line 74 – window.confirm('...') blocks and skips confirm handler when running inside embedded contexts; consider a proper shadcn AlertDialog for consistency with rest of app.",
+    "AzureStatementTab.jsx line 81 – CSV export builds newline-joined string but Blob is not URL.revokeObjectURL'd, leaking object URLs across repeated exports.",
+    "Component is 157 lines and uses ~10 useState hooks in one file; still under the 700-line threshold, but extracting RowEditor into its own file would ease testing."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "N/A (frontend-only run)", "frontend": "~80% — 7 of 8 review scenarios verified; send scenario partially failed due to 502 + missing send-result render"},
+  "test_credentials": "sandeepjb2014@gmail.com / Rudaya@1246 (admin) — loaded from /app/memory/test_credentials.md",
+  "seed_data_creation": "+12 new pending Bank Inbox messages from the Saraswat statement send (Pending 12 → 24). Row 1 narration on the Saraswat statement import 6ab8db2d28f7d4af8ddc3a75 was patched to append ' QAUI3'. Downloaded CSV: statement-review-6ab8db2d28f7d4af8ddc3a75.csv (transient, not persisted).",
+  "retest_needed": true,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Environment already has the Saraswat 5-page PDF ingested twice (once analyzed, some rows sent). On re-analyze the backend returns previously_analyzed=true → click az-view-previous. Duplicates=2 in this environment cause parsed_credit_total to be ₹45,52,800 vs statement ₹45,60,612 → recon FAILED with credit diff ₹7,812. In a clean env recon should MATCH. Key testids used: tab-azure, azure-statement-tab, az-diagnostics, az-engine, az-test-btn, az-bank, az-file-input, az-choose-btn, az-analyze-btn, az-summary, az-bank-name, az-counts, az-reconciliation, az-recon-status, az-recon-message, recon-debit, recon-credit, recon-closing-balance, az-selection, az-rows-table, az-row-{n}, az-row-select, az-row-edit, az-row-status, az-row-confidence, stmt-row-editor, stmt-edit-date, stmt-edit-direction, stmt-edit-amount, stmt-edit-narration, stmt-edit-reference, stmt-edit-save, az-export-btn, az-send-btn, az-send-result, az-previous, az-view-previous. Note: tab-m365 and tab-parser-test testids do NOT exist; use text selectors 'M365 Queue' / 'Parser Test' instead.",
+  "rca of the issue": "1) Closing balance ₹698 bug: server returns statement_closing_balance as an Indian-formatted string (e.g. '6,98,692.97 CR'). Frontend strips currency but not commas, then parseFloat truncates at the first comma. Reproduce by uploading /app/backend/tests/fixtures/saraswat_2025_26.pdf → observe recon-closing-balance Statement column shows '₹698'. Fix: `parseFloat(s.replace(/[^0-9.\\-]/g, ''))` (drop commas) or return a numeric field from backend. 2) Recon FAILED after partial send: server excludes duplicate rows from parsed totals though they were extracted from THIS statement. Fix: keep duplicates in parsed_*_total during reconciliation. 3) Send 502: unclear whether it's gateway/ingress timeout or long-running server op; add server-side timing metric and consider a background job with polling."
+}

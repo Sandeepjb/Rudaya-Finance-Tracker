@@ -10,11 +10,12 @@ def _d(v) -> Decimal:
 
 
 def reconcile(rows: List[dict], statement_totals: Optional[dict], opening_balance: Optional[float]) -> dict:
-    valid = [r for r in rows if not r["errors"]]
+    valid = [r for r in rows if not r.get("needs_review") and r["txn"].get("direction") in ("debit", "credit")]  # duplicates are still statement rows
     pd = sum((_d(r["txn"]["amount"]) for r in valid if r["txn"]["direction"] == "debit"), Decimal("0.00"))
     pc = sum((_d(r["txn"]["amount"]) for r in valid if r["txn"]["direction"] == "credit"), Decimal("0.00"))
     st = statement_totals or {}
-    out = {"parsed_debit_total": str(pd), "parsed_credit_total": str(pc), "statement_debit_total": None, "statement_credit_total": None,
+    cb0, _ = balance_parts(st.get("closing_balance")) if st.get("closing_balance") else (None, None)
+    out = {"statement_closing_balance_value": str(cb0) if cb0 is not None else None, "parsed_debit_total": str(pd), "parsed_credit_total": str(pc), "statement_debit_total": None, "statement_credit_total": None,
            "debit_difference": None, "credit_difference": None, "statement_closing_balance": None, "parsed_closing_balance": None,
            "closing_balance_difference": None, "ambiguous_rows": sum(1 for r in rows if r["needs_review"]), "status": "WARNING", "messages": []}
     if st.get("debit") is not None:

@@ -8,7 +8,7 @@ import { fmtDate } from "@/lib/bankInbox";
 import { DirectionBadge } from "./ConfidenceBadge";
 
 const STATUS_CLS = { MATCHED: "border-emerald-600 text-emerald-700 bg-emerald-50", WARNING: "border-amber-600 text-amber-800 bg-amber-50", FAILED: "border-red-600 text-red-700 bg-red-50" };
-const money = (s) => (s == null ? "—" : inr(parseFloat(s)));
+const money = (s) => (s == null ? "—" : inr(parseFloat(String(s).replace(/[^0-9.-]/g, ""))));
 
 function ReconRow({ label, st, parsed, diff }) {
   const bad = diff != null && parseFloat(diff) !== 0;
@@ -73,12 +73,23 @@ export default function AzureStatementTab({ onSent }) {
   const send = async () => {
     if (!window.confirm(`Send ${sel.size} valid transaction(s) to the Bank Inbox as PENDING? No Finance transactions will be created.`)) return;
     setBusy(true);
-    try { const r = await api.post(`/bank-transactions/statement-imports/${imp.statement_import_id}/send`, { rows: [...sel] }); setSendRes(r.data); toast.success(`${r.data.sent} sent to inbox, ${r.data.duplicates} duplicates`); const d = await api.get(`/bank-transactions/statement-imports/${imp.statement_import_id}`); setImp(d.data); onSent?.(); }
-    catch (e) { toast.error(formatApiError(e.response?.data?.detail)); } finally { setBusy(false); }
+    try {
+      const r = await api.post(`/bank-transactions/statement-imports/${imp.statement_import_id}/send`, { rows: [...sel] });
+      setSendRes({ ...r.data, running: true });
+      let cur = r.data;
+      for (let i = 0; i < 400; i++) {
+        await new Promise((res) => setTimeout(res, 2500));
+        const d = (await api.get(`/bank-transactions/statement-imports/${imp.statement_import_id}`)).data;
+        cur = d.send_progress || cur; setSendRes({ ...cur, running: d.processing_status === "sending" }); setImp(d);
+        if (d.processing_status !== "sending") break;
+      }
+      toast.success(`${cur.sent} sent to inbox, ${cur.duplicates} duplicates`); onSent?.();
+    } catch (e) { toast.error(formatApiError(e.response?.data?.detail) || "Send failed — check Pending inbox and retry"); setSendRes((s) => (s ? { ...s, running: false, error: true } : { error: true, sent: 0, duplicates: 0, skipped: [] })); }
+    finally { setBusy(false); }
   };
   const exportReview = () => {
     const lines = [["Row", "Date", "Direction", "Amount", "Balance", "Narration", "Reference", "Confidence", "Status"].join(",")].concat(imp.rows.map((r) => [r.row, r.txn.transaction_date, r.txn.direction, r.txn.amount, r.running_balance ?? "", `"${(r.txn.narration || "").replace(/"/g, "'")}"`, r.txn.bank_reference, r.confidence_band, r.status].join(",")));
-    const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([lines.join("\n")], { type: "text/csv" })); a.download = `statement-review-${imp.statement_import_id}.csv`; a.click();
+    const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([lines.join("\n")], { type: "text/csv" })); a.download = `statement-review-${imp.statement_import_id}.csv`; a.click(); URL.revokeObjectURL(a.href);
   };
   const rec = imp?.reconciliation;
 
@@ -117,7 +128,7 @@ export default function AzureStatementTab({ onSent }) {
             <div className="bg-white border border-neutral-200 p-4" data-testid="az-reconciliation">
               <div className="flex items-center justify-between mb-2"><div className="text-[10px] uppercase tracking-[0.2em] text-neutral-500">Statement reconciliation</div><span data-testid="az-recon-status" className={`text-[10px] uppercase tracking-wider px-2 py-0.5 border ${STATUS_CLS[rec?.status] || ""}`}>{rec?.status}</span></div>
               <table className="w-full text-xs"><thead className="text-[10px] uppercase text-neutral-500"><tr><th></th><th className="text-right p-2">Statement</th><th className="text-right p-2">Parsed</th><th className="text-right p-2">Difference</th></tr></thead>
-                <tbody><ReconRow label="Debit" st={rec?.statement_debit_total} parsed={rec?.parsed_debit_total} diff={rec?.debit_difference} /><ReconRow label="Credit" st={rec?.statement_credit_total} parsed={rec?.parsed_credit_total} diff={rec?.credit_difference} /><ReconRow label="Closing Balance" st={rec?.statement_closing_balance?.replace(/[^\d.,-]/g, "")} parsed={rec?.parsed_closing_balance} diff={rec?.closing_balance_difference} /></tbody></table>
+                <tbody><ReconRow label="Debit" st={rec?.statement_debit_total} parsed={rec?.parsed_debit_total} diff={rec?.debit_difference} /><ReconRow label="Credit" st={rec?.statement_credit_total} parsed={rec?.parsed_credit_total} diff={rec?.credit_difference} /><ReconRow label="Closing Balance" st={rec?.statement_closing_balance_value} parsed={rec?.parsed_closing_balance} diff={rec?.closing_balance_difference} /></tbody></table>
               <div className={`mt-2 text-xs p-2 border ${STATUS_CLS[rec?.status] || ""}`} data-testid="az-recon-message">{rec?.status === "MATCHED" ? "Statement reconciliation successful." : "RECONCILIATION WARNING — "}{rec?.status !== "MATCHED" && rec?.messages.join(" · ")}{rec?.ambiguous_rows ? ` · Ambiguous rows: ${rec.ambiguous_rows}` : ""}</div>
             </div>
           </div>
@@ -126,7 +137,7 @@ export default function AzureStatementTab({ onSent }) {
             <div className="p-2 flex items-center justify-between flex-wrap gap-2 border-b border-neutral-200">
               <div className="text-xs text-neutral-600" data-testid="az-selection">Detected {imp.transactions_detected} · Valid {imp.transactions_valid} · Needs Review {imp.transactions_ambiguous} · Duplicates {imp.transactions_duplicate} · <b>Selected {sel.size}</b></div>
               <div className="flex gap-2"><Button data-testid="az-export-btn" size="sm" variant="outline" className="rounded-none" onClick={exportReview}>Export Review</Button>
-                <Button data-testid="az-send-btn" size="sm" className="rounded-none bg-emerald-700 hover:bg-emerald-600" disabled={busy || !sel.size || imp.processing_status !== "analyzed"} onClick={send}><PaperPlaneTilt size={14} className="mr-1" /> Send Valid Transactions to Bank Inbox ({sel.size})</Button></div>
+                <Button data-testid="az-send-btn" size="sm" className="rounded-none bg-emerald-700 hover:bg-emerald-600" disabled={busy || !sel.size || imp.processing_status !== "analyzed"} title={imp.processing_status !== "analyzed" ? `Statement already ${imp.processing_status}` : ""} onClick={send}><PaperPlaneTilt size={14} className="mr-1" /> Send Valid Transactions to Bank Inbox ({sel.size})</Button></div>
             </div>
             <div className="max-h-[520px] overflow-auto">
               <table className="w-full text-xs" data-testid="az-rows-table">
@@ -149,7 +160,9 @@ export default function AzureStatementTab({ onSent }) {
               </table>
             </div>
           </div>
-          {sendRes && <div className="bg-white border border-emerald-600 border-l-4 p-3 text-sm" data-testid="az-send-result">Sent {sendRes.sent} to Bank Inbox (Pending approval), {sendRes.duplicates} resolved as duplicates, {sendRes.skipped.length} skipped. No Finance transactions were created.</div>}
+          {sendRes && <div className={`bg-white border border-l-4 p-3 text-sm ${sendRes.error ? "border-red-600" : sendRes.running ? "border-amber-500" : "border-emerald-600"}`} data-testid="az-send-result">
+            {sendRes.error ? "Send did not complete — some rows may already be in the Pending inbox; re-open this analysis to see per-row status." : sendRes.running ? `Sending… ${sendRes.done ?? 0} / ${sendRes.total ?? sel.size} processed (${sendRes.sent ?? 0} pending, ${sendRes.duplicates ?? 0} duplicates)` : `Sent ${sendRes.sent} to Bank Inbox (Pending approval), ${sendRes.duplicates} resolved as duplicates, ${(sendRes.skipped || []).length} skipped. No Finance transactions were created.`}
+          </div>}
         </>
       )}
     </div>
