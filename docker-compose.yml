@@ -1,0 +1,57 @@
+services:
+
+  mongodb:
+    image: mongo:7
+    container_name: rudaya-mongodb
+    restart: unless-stopped
+    volumes:
+      - rudaya_mongodb_data:/data/db
+    networks:
+      - rudaya-finance-net
+
+  backend:
+    build:
+      context: ./backend
+    container_name: rudaya-backend
+    restart: unless-stopped
+    env_file:
+      - ./backend/.env
+    depends_on:
+      - mongodb
+    networks:
+      - rudaya-finance-net
+
+  frontend:
+    build:
+      context: ./frontend
+    container_name: rudaya-frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    networks:
+      - rudaya-finance-net
+
+  caddy:
+    image: caddy:2-alpine
+    container_name: rudaya-caddy
+    restart: unless-stopped
+    ports:
+      - "9443:443"
+    volumes:
+      - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - rudaya_caddy_data:/data
+      - rudaya_caddy_config:/config
+    depends_on:
+      - frontend
+      - backend
+    networks:
+      - rudaya-finance-net
+
+volumes:
+  rudaya_mongodb_data:
+  rudaya_caddy_data:
+  rudaya_caddy_config:
+
+networks:
+  rudaya-finance-net:
+    driver: bridge
