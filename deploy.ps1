@@ -131,8 +131,8 @@ if ($LASTEXITCODE -ne 0) {
     -k `
     $HealthUrl *> $null
 
-if ($LASTEXITCODE -ne 0) *
-    Fail "HTTPS health check fail*d: $HealthUrl"
+if ($LASTEXITCODE -ne 0) {
+    Fail "HTTPS health check failed: $HealthUrl"
 }
     if ($LASTEXITCODE -ne 0) { Fail "HTTPS health check failed: $HealthUrl" }
 
