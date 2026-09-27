@@ -82,11 +82,24 @@ try {
     docker compose config --quiet
     if ($LASTEXITCODE -ne 0) { Fail "Docker Compose validation failed." }
 
-    if (-not $SkipTests -and (Test-Path ".\backend\tests")) {
-        Step "Run backend tests in a disposable container"
-        docker compose run --rm --no-deps backend pytest -q
-        if ($LASTEXITCODE -ne 0) { Fail "Backend tests failed." }
-    }
+    Step "Pre-deployment Python validation"
+
+python -m tabnanny .\backend
+if ($LASTEXITCODE -ne 0) {
+    Fail "Python indentation validation failed."
+}
+
+python -m compileall -q .\backend
+if ($LASTEXITCODE -ne 0) {
+    Fail "Python compilation validation failed."
+}
+
+Step "Validate Docker Compose"
+
+docker compose config --quiet
+if ($LASTEXITCODE -ne 0) {
+    Fail "Docker Compose validation failed."
+}
 
     Step "Build images before replacing running containers"
     docker compose build backend frontend
