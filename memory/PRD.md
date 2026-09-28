@@ -69,6 +69,18 @@
 
 - Post-test fixes (iteration_11/12): closing-balance display, Azure diagnostics wording, background send with progress polling (`send_progress`, statuses sending→sent, per-row send_failed), duplicates & confirmed-direction rows count toward totals, blank-particulars rows → Needs Review. Real statement: 72 rows, 1 needs review (row with blank particulars in the PDF), totals reconcile 0.00 → status WARNING (honest) until the admin corrects that row.
 
+## Implemented (2026-09-28) — batch 10: SharePoint bank queue hardening (on-prem baseline synced)
+- Production baseline (user-uploaded `sharepoint_bank_queue.py`, `server.py`, phase2, parsers, requirements) reconciled into workspace; workspace == production except SharePoint hooks now included.
+- `sharepoint_bank_queue.py`: bank allowlist (`SHAREPOINT_BANK_ALLOWLIST` default hdfc,saraswat — ICICI parser kept but ignored on queue path), relevance gate (OTP/promo/statement/failed → Ignored, never inbox / needs_parsing_review / retries), safe int config, config errors never block FastAPI.
+- `bank_parsers/base.py`: `clean_email_body` (HTML→text, 400k raw cap, 20k output cap), `looks_like_transaction`, `html.unescape`. `registry.identify_bank`. HDFC/Saraswat narration patterns improved (NEFT/IMPS/UPI structured info, `at`, `by`, `srcb`).
+- `bank_inbox_phase2.py`: `QUEUE_BODY_MAX`; normalized() cleans+caps body so Pydantic never fails on big HTML.
+- Bugfix: Azure DI async client used sync `RetryPolicy` → `AsyncRetryPolicy` (500 on /azure/test).
+- `backend/.env.example` (names only), `.gitignore` merged (allow .env.example, exclude backups/logs/tmp). `requirements.txt` aligned to production (stray litellm line removed).
+- Tests: `tests/test_sharepoint_queue.py` (22, Graph stubbed). Full suite 182 green.
+- New env vars (optional, defaults shown): SHAREPOINT_BANK_ALLOWLIST=hdfc,saraswat ; SHAREPOINT_BANK_QUEUE_IGNORED_STATUS=Ignored (SharePoint ProcessingStatus choice column must accept this value or set it to an existing choice).
+- Dev-env Azure key currently returns 401 (rotated); production uses its own key.
+
+
 ## Backlog / Next
 - P1 (approved for later): Phase 2 Power Automate / SharePoint ingestion; Bank Reconciliation
 - P1: Excel `.xlsx` export mirroring the original template + a Forecast sheet

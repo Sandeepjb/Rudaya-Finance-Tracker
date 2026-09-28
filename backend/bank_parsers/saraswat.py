@@ -19,13 +19,14 @@ _SKIP_RE = re.compile(r"(?i)^(date\s+particulars|statement of accounts|page\s*:|
 
 class SaraswatParser(BaseParser):
     name = "saraswat"
-    version = "1.1"
+    version = "1.2"
     bank_name = "Saraswat Bank"
-    keywords = ("saraswat", "saraswatbank")
-    sender_keywords = ("saraswat",)
+    keywords = ("saraswat", "saraswatbank", "srcb")
+    sender_keywords = ("saraswat", "srcb")
     narration_patterns = (
-        r"(?:for|towards|Info|Desc(?:ription)?|Particulars)\s*[:\-]?\s*([^\.]+?)(?:\.\s|\.$|\sRef|\sAvl|$)",
-        r"\b(?:to|from)\s+(?!a/c|A/c|account|your)([^\.]+?)(?:\.\s|\.$|\sRef|\sAvl|$)",
+        r"(?:for|towards|Info|Desc(?:ription)?|Particulars|Remarks?)\s*[:\-]?\s*([^\.]+?)(?:\.\s|\.$|\sRef|\sAvl|\sBal|$)",
+        r"\b(?:to|from|by)\s+(?!a/c|A/c|account|your|Rs\b|INR\b)([^\.]+?)(?:\.\s|\.$|\sRef|\sAvl|\sBal|\son\s\d|$)",
+        r"\b((?:UPI|NEFT|IMPS|RTGS|ACH|ECS|CHQ|CLG)[/\-][^\s\.]+(?:\s[^\.]+?)?)(?:\.\s|\.$|\sRef|\sAvl|\sBal|$)",
     )
 
     @staticmethod

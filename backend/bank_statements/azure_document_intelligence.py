@@ -74,13 +74,13 @@ class AzureDocumentIntelligenceProvider(ExtractionProvider):
 
     def _client(self):
         from azure.core.credentials import AzureKeyCredential
-        from azure.core.pipeline.policies import RetryPolicy
+        from azure.core.pipeline.policies import AsyncRetryPolicy
         from azure.ai.documentintelligence.aio import DocumentIntelligenceClient
         return DocumentIntelligenceClient(
             endpoint=os.environ["AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT"].rstrip("/"),
             credential=AzureKeyCredential(os.environ["AZURE_DOCUMENT_INTELLIGENCE_KEY"]),
-            retry_policy=RetryPolicy(retry_total=3, retry_backoff_factor=1, retry_backoff_max=8,
-                                     retry_on_status_codes=[408, 429, 500, 502, 503, 504]))
+            retry_policy=AsyncRetryPolicy(retry_total=3, retry_backoff_factor=1, retry_backoff_max=8,
+                                          retry_on_status_codes=[408, 429, 500, 502, 503, 504]))
 
     async def analyze(self, pdf_bytes: bytes) -> ExtractionResult:
         if not self.configured():

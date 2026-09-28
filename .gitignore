@@ -94,3 +94,20 @@ frontend/node_modules/.cache/default-development/4.pack
 frontend/node_modules/.cache/default-development/6.pack
 frontend/node_modules/.cache/default-development/11.pack
 frontend/node_modules/.cache/default-development/7.pack
+
+# --- Rudaya on-prem safety: env templates allowed, runtime/backup/data files excluded ---
+!.env.example
+!backend/.env.example
+.env.backup*
+*.env.backup*
+*.bak
+*.backup
+*.old
+*.before-*
+*.log
+logs/
+tmp/
+temp/
+.pytest_cache/
+.ruff_cache/
+Thumbs.db

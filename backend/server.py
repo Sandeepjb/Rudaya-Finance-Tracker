@@ -5,6 +5,8 @@ ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
 
 import os
+import asyncio
+import sharepoint_bank_queue
 import json
 import logging
 import bcrypt
@@ -83,6 +85,8 @@ client = AsyncIOMotorClient(mongo_url)
 db = client[os.environ['DB_NAME']]
 
 app = FastAPI(title="Rudaya Power Finance Tracker")
+_sharepoint_worker_task = None
+_sharepoint_worker_stop = None
 api_router = APIRouter(prefix="/api")
 
 JWT_ALGORITHM = "HS256"
@@ -2200,10 +2204,20 @@ async def startup():
         logger.warning(f"Object storage init failed at startup — attachments will retry on first upload: {e}")
     await seed_all()
     await bank_inbox.ensure_indexes()
+    global _sharepoint_worker_task, _sharepoint_worker_stop
+    _sharepoint_worker_stop = asyncio.Event()
+    _sharepoint_worker_task = asyncio.create_task(sharepoint_bank_queue.worker_loop(db, _sharepoint_worker_stop))
 
 
 @app.on_event("shutdown")
 async def shutdown_db_client():
+    if _sharepoint_worker_stop:
+        _sharepoint_worker_stop.set()
+    if _sharepoint_worker_task:
+        try:
+            await asyncio.wait_for(_sharepoint_worker_task, timeout=5)
+        except (asyncio.TimeoutError, asyncio.CancelledError):
+            _sharepoint_worker_task.cancel()
     client.close()
 
 

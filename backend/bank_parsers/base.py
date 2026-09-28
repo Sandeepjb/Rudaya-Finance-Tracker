@@ -1,3 +1,4 @@
+import html
 import re
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -45,11 +46,40 @@ class ParseContext:
 def html_to_text(s: str) -> str:
     if not s or "<" not in s:
         return s or ""
-    s = re.sub(r"(?is)<(script|style).*?</\1>", " ", s)
-    s = re.sub(r"(?i)<br\s*/?>|</p>|</div>|</tr>|</li>", "\n", s)
+    s = re.sub(r"(?is)<(script|style|head).*?</\1>", " ", s)
+    s = re.sub(r"(?is)<!--.*?-->", " ", s)
+    s = re.sub(r"(?i)<br\s*/?>|</p>|</div>|</tr>|</li>|</td>|</th>", "\n", s)
     s = re.sub(r"<[^>]+>", " ", s)
-    return (s.replace("&nbsp;", " ").replace("&amp;", "&").replace("&lt;", "<").replace("&gt;", ">")
-            .replace("&#39;", "'").replace("&quot;", '"'))
+    return html.unescape(s.replace("&nbsp;", " "))
+
+
+# Raw email bodies (large HTML newsletters, signatures, tracking pixels) are capped BEFORE any regex work.
+RAW_EMAIL_MAX_CHARS = 400_000
+
+
+def clean_email_body(raw: str, limit: int) -> str:
+    """HTML → plain text, collapse whitespace, hard-cap to `limit` chars so Pydantic max_length never fails."""
+    s = (raw or "")[:RAW_EMAIL_MAX_CHARS]
+    s = html_to_text(s)
+    s = re.sub(r"[ \t\r\f\v]+", " ", s)
+    s = re.sub(r"\s*\n\s*", "\n", s).strip()
+    return s[:limit]
+
+
+NON_TXN_RE = (r"\b(OTP|one[\s-]?time\s+password|verification\s+code|is\s+your\s+password|statement\s+(?:is|has\s+been)\s+"
+              r"(?:ready|generated|sent|attached)|e-?statement|will\s+be\s+debited|has\s+been\s+declined|(?:transaction|txn|payment)"
+              r"\s+(?:has\s+)?(?:failed|declined|unsuccessful|reversed)|request\s+(?:has\s+been\s+)?received|"
+              r"login\s+alert|logged\s+in|password\s+(?:changed|reset)|KYC|offer|cashback\s+offer|pre-?approved|"
+              r"apply\s+now|due\s+date|reminder|minimum\s+amount\s+due|autopay\s+(?:set|registered))\b")
+
+
+def looks_like_transaction(text: str) -> bool:
+    """True only for a completed money-movement alert: an amount AND a debit/credit verb, and no non-transaction marker."""
+    if not text or not re.search(AMOUNT_RE, text, re.IGNORECASE):
+        return False
+    if not direction_of(text):
+        return False
+    return not re.search(NON_TXN_RE, text, re.IGNORECASE)
 
 
 @dataclass
@@ -73,8 +103,8 @@ AMOUNT_RE = r"(?:INR|Rs\.?|₹)\s*([\d,]+(?:\.\d{1,2})?)"
 DATE_RE = r"\b(\d{1,2}[-/ .][A-Za-z]{3,9}[-/ .,]\s?\d{2,4}|\d{1,2}[-/.]\d{1,2}[-/.]\d{2,4}|\d{4}-\d{2}-\d{2})"
 ACCT_RE = r"(?:Account|A/c|Acct|a/c)\s*(?:No\.?\s*)?(?:XX|\*+|x+|X+)?(\d{3,6})\b"
 REF_RE = r"(?:UPI\s*Ref(?:erence)?\s*No\.?\s*:?\s*|Ref(?:erence)?\s*(?:No\.?)?\s*:?\s*|UTR\s*(?:No\.?)?\s*:?\s*|Txn\s*(?:ID|No)\s*:?\s*|IMPS\s*Ref\s*:?\s*)([A-Za-z0-9]{6,})"
-DEBIT_WORDS = r"\b(debited|spent|paid|withdrawn|purchase of|debit)\b"
-CREDIT_WORDS = r"\b(credited|received|deposited|credit)\b"
+DEBIT_WORDS = r"\b(debited|spent|paid|withdrawn|purchase of|debit|deducted|transferred from)\b"
+CREDIT_WORDS = r"\b(credited|received|deposited|credit|transferred to your)\b"
 
 
 def first(pattern: str, text: str) -> Optional[str]:

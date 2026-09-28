@@ -16,6 +16,7 @@ from bank_parsers.registry import parse_all, select_parser, selection_detail
 
 QUEUE_SOURCES = {"power_automate", "sharepoint", "email"}
 QUEUE_STATUSES = {"received", "parsed", "parse_failed", "duplicate", "pending"}
+QUEUE_BODY_MAX = 20000
 
 
 class QueueMessageIn(BaseModel):
@@ -26,8 +27,8 @@ class QueueMessageIn(BaseModel):
     subject: str = Field("", max_length=500)
     received_at: str = Field("", max_length=40)
     received_datetime: str = Field("", max_length=40)
-    body: str = Field("", max_length=20000)
-    email_body_text: str = Field("", max_length=20000)
+    body: str = Field("", max_length=QUEUE_BODY_MAX)
+    email_body_text: str = Field("", max_length=QUEUE_BODY_MAX)
     email_body_html: str = Field("", max_length=60000)
     bank_hint: str = Field("", max_length=100)
     source: str = Field("power_automate", max_length=30)
@@ -35,11 +36,11 @@ class QueueMessageIn(BaseModel):
     idempotency_key: str = Field("", max_length=200)
 
     def normalized(self) -> "QueueMessageIn":
-        from bank_parsers.base import html_to_text
+        from bank_parsers.base import clean_email_body
         mid = (self.source_message_id or self.internet_message_id or self.idempotency_key or "").strip()
         if len(mid) < 3:
             raise HTTPException(422, "source_message_id (or internet_message_id / idempotency_key) is required")
-        body = (self.body or self.email_body_text or html_to_text(self.email_body_html) or "").strip()
+        body = clean_email_body(self.body or self.email_body_text or self.email_body_html, QUEUE_BODY_MAX)
         if len(body) < 5:
             raise HTTPException(422, "email body is required (body, email_body_text or email_body_html)")
         return self.model_copy(update={"source_message_id": mid, "body": body,

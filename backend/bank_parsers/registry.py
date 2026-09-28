@@ -14,6 +14,12 @@ def select_parser(ctx: ParseContext) -> tuple:
     return scored[0][1], scored[0][0]
 
 
+def identify_bank(ctx: ParseContext) -> str:
+    """Parser name of the bank the message belongs to ('' when no bank-specific parser matches)."""
+    parser, score = select_parser(ctx)
+    return parser.name if parser.name != "generic" and score > 0 else ""
+
+
 def selection_detail(ctx: ParseContext) -> dict:
     parser, score = select_parser(ctx)
     _, methods = parser.match_detail(ctx)
