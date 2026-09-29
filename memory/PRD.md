@@ -81,6 +81,15 @@
 - Dev-env Azure key currently returns 401 (rotated); production uses its own key.
 
 
+## Implemented (2026-09-28) — batch 11: Duplicate review (human-in-the-loop) — branch feature/duplicate-review
+- Status model (additive, no migration): `duplicate` = possible duplicate awaiting review (legacy records reviewable as-is); new `duplicate_rejected`; approve-as-new → `pending` → normal Approve & Post. Dup-detection queries now `$nin [duplicate, duplicate_rejected]` (4 sites).
+- New fields (optional): duplicate_score, duplicate_detection_reason[], duplicate_reviewed_by/at, duplicate_review_action (approved_as_new|rejected_duplicate), duplicate_override_reason, duplicate_overridden.
+- API: GET /bank-transactions/{tid}/duplicate (compare + reasons + score), POST …/duplicate/approve {reason min5}, POST …/duplicate/reject {note}. Atomic status claims → idempotent. Audit actions duplicate_approved_as_new / duplicate_rejected.
+- UI: BankTxnCard duplicate branch (POSSIBLE DUPLICATE, Compare/Reject/Approve as New), DuplicateReviewDialog (side-by-side, reasons, confidence, confirm steps), rejected dups greyed below review items, counter "N +M".
+- Tests: tests/test_duplicate_review.py (10) + frontend iteration_13 all pass.
+- Baseline before change: main @ 59fddd6.
+
+
 ## Backlog / Next
 - P1 (approved for later): Phase 2 Power Automate / SharePoint ingestion; Bank Reconciliation
 - P1: Excel `.xlsx` export mirroring the original template + a Forecast sheet
