@@ -598,7 +598,7 @@ async def _pdf_preview(raw: bytes, bank_name: str, bank_account: str) -> dict:
             fps.add(p["fingerprint"])
     existing = set()
     if fps:
-        async for d in db.bank_transactions.find({"fingerprint": {"$in": list(fps)}, "status": {"$ne": "duplicate"}}, {"fingerprint": 1}):
+        async for d in db.bank_transactions.find({"fingerprint": {"$in": list(fps)}, "status": {"$nin": ["duplicate", "duplicate_rejected"]}}, {"fingerprint": 1}):
             existing.add(d["fingerprint"])
     for p in parsed:
         p["already_ingested"] = bool(p["fingerprint"] and p["fingerprint"] in existing)

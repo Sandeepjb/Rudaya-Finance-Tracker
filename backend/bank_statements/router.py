@@ -50,7 +50,7 @@ async def _mark_duplicates(rows: list):
         r["fingerprint"], r["status"] = fp, "valid"
     existing = {}
     if fps:
-        async for d in db.bank_transactions.find({"fingerprint": {"$in": list(fps)}, "status": {"$ne": "duplicate"}}, {"fingerprint": 1}):
+        async for d in db.bank_transactions.find({"fingerprint": {"$in": list(fps)}, "status": {"$nin": ["duplicate", "duplicate_rejected"]}}, {"fingerprint": 1}):
             existing[d["fingerprint"]] = str(d["_id"])
     for r in rows:
         if r.get("fingerprint") in existing:

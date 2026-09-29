@@ -18,7 +18,9 @@ logger = logging.getLogger("bank_inbox")
 router = APIRouter(prefix="/api/bank-transactions")
 
 SOURCES = {"manual", "email", "power_automate", "sharepoint", "bank_api", "csv"}
-STATUSES = {"pending", "approved", "rejected", "duplicate"}
+STATUSES = {"pending", "approved", "rejected", "duplicate", "duplicate_rejected"}
+# "duplicate" == possible duplicate awaiting human review; "duplicate_rejected" == confirmed duplicate (audit only)
+DUP_STATUSES = ["duplicate", "duplicate_rejected"]
 DIRECTIONS = {"debit", "credit"}
 TYPES = {"Revenue", "Cost", "Expense"}
 AI_THRESHOLD = 70
@@ -311,6 +313,42 @@ async def learn(txn: dict, final: dict, actor: str):
 
 
 # ---------- pipeline ----------
+def duplicate_analysis(d: dict, orig: Optional[dict]) -> dict:
+    """Why the detector flagged `d` as a possible duplicate of `orig` + a 0-100 confidence. Pure function."""
+    if not orig:
+        return {"score": 0, "reasons": ["original record not found"], "date_diff_days": None}
+    reasons, score = [], 0
+    if (d.get("bank_name") or "").strip().upper() == (orig.get("bank_name") or "").strip().upper():
+        reasons.append("Same bank"); score += 10
+    if (d.get("bank_account") or "")[-4:] == (orig.get("bank_account") or "")[-4:]:
+        reasons.append("Same account"); score += 10
+    if d.get("direction") == orig.get("direction"):
+        reasons.append(f"Same direction ({d.get('direction')})"); score += 10
+    if f"{float(d.get('amount') or 0):.2f}" == f"{float(orig.get('amount') or 0):.2f}":
+        reasons.append("Same amount"); score += 25
+    ref_d = (d.get("utr_reference") or d.get("bank_reference") or "").strip().upper()
+    ref_o = (orig.get("utr_reference") or orig.get("bank_reference") or "").strip().upper()
+    if ref_d and ref_d == ref_o:
+        reasons.append(f"Same bank reference ({ref_d})"); score += 30
+    n_d, n_o = normalize_narration(d.get("narration") or ""), normalize_narration(orig.get("narration") or "")
+    if n_d and n_d == n_o:
+        reasons.append("Same narration"); score += 15
+    else:
+        kd, ko = keywords(d.get("narration") or ""), keywords(orig.get("narration") or "")
+        if kd and ko and len(kd & ko) / len(kd | ko) >= 0.5:
+            reasons.append("Similar narration"); score += 8
+    diff = None
+    try:
+        diff = abs((datetime.fromisoformat(d["transaction_date"][:10]) - datetime.fromisoformat(orig["transaction_date"][:10])).days)
+        reasons.append("Same date" if diff == 0 else f"{diff} day(s) apart")
+        score += 10 if diff == 0 else (5 if diff <= 3 else 0)
+    except (KeyError, ValueError, TypeError):
+        pass
+    if d.get("source_message_id") and d.get("source_message_id") == orig.get("source_message_id"):
+        reasons.append("Same source message id"); score += 20
+    return {"score": min(100, score), "reasons": reasons, "date_diff_days": diff}
+
+
 async def ingest_one(p: BankTxnIn, actor: str) -> dict:
     d = _validate_payload(p)
     d["fingerprint"] = bank_fingerprint(d)
@@ -319,16 +357,19 @@ async def ingest_one(p: BankTxnIn, actor: str) -> dict:
     d["ingested_by"] = actor
     d["reconciliation_status"] = "unmatched"
     d["finance_transaction_id"] = None
-    dup_q = {"status": {"$ne": "duplicate"}, "$or": [{"fingerprint": d["fingerprint"]}]}
+    dup_q = {"status": {"$nin": DUP_STATUSES}, "$or": [{"fingerprint": d["fingerprint"]}]}
     if d.get("source_message_id"):
         dup_q["$or"].append({"source": d["source"], "source_message_id": d["source_message_id"]})
     existing = await db.bank_transactions.find_one(dup_q)
     if existing:
+        an = duplicate_analysis(d, existing)
         d["status"] = "duplicate"
         d["duplicate_of"] = str(existing["_id"])
+        d["duplicate_score"], d["duplicate_detection_reason"] = an["score"], an["reasons"]
         d["suggestion"], d["matches"] = None, []
         r = await db.bank_transactions.insert_one(d)
-        await audit("duplicate_detected", actor, r.inserted_id, new={"duplicate_of": d["duplicate_of"]})
+        await audit("duplicate_detected", actor, r.inserted_id, new={"duplicate_of": d["duplicate_of"], "score": an["score"],
+                                                                     "reasons": an["reasons"]})
         return _out(d | {"_id": r.inserted_id})
     r = await db.bank_transactions.insert_one(d)
     await audit("ingested", actor, r.inserted_id, new={"source": d["source"], "amount": d["amount"]})
@@ -359,6 +400,9 @@ def _out(d: dict) -> dict:
         "ingested_at": d.get("ingested_at"), "approved_at": d.get("approved_at"), "approved_by": d.get("approved_by"),
         "rejected_at": d.get("rejected_at"), "rejected_by": d.get("rejected_by"),
         "rejection_reason": d.get("rejection_reason"),
+        "duplicate_score": d.get("duplicate_score"), "duplicate_detection_reason": d.get("duplicate_detection_reason") or [],
+        "duplicate_reviewed_by": d.get("duplicate_reviewed_by"), "duplicate_reviewed_at": d.get("duplicate_reviewed_at"),
+        "duplicate_review_action": d.get("duplicate_review_action"), "duplicate_override_reason": d.get("duplicate_override_reason"),
     }
 
 
@@ -428,7 +472,9 @@ async def list_txns(user: dict = Depends(require_admin), status: Optional[str] =
                     project_id: Optional[str] = None, min_confidence: Optional[int] = None,
                     max_confidence: Optional[int] = None, search: Optional[str] = None, limit: int = 500):
     q = {}
-    if status and status != "all":
+    if status == "duplicate":
+        q["status"] = {"$in": DUP_STATUSES}
+    elif status and status != "all":
         q["status"] = status
     if bank:
         q["bank_name"] = {"$regex": re.escape(bank), "$options": "i"}
@@ -609,6 +655,70 @@ async def reject_txn(tid: str, payload: RejectIn, user: dict = Depends(require_a
         "rejection_reason": payload.reason}})
     await audit("rejected", user["email"], d["_id"], new={"reason": payload.reason})
     return {"ok": True}
+
+
+# ---------- duplicate review (human-in-the-loop) ----------
+class DuplicateApproveIn(BaseModel):
+    reason: str = Field(..., min_length=5, max_length=500)
+
+
+class DuplicateRejectIn(BaseModel):
+    note: str = Field("", max_length=500)
+
+
+async def _dup_pair(tid: str) -> tuple:
+    d = await db.bank_transactions.find_one({"_id": _oid(tid)})
+    if not d:
+        raise HTTPException(404, "Not found")
+    if not d.get("duplicate_of"):
+        raise HTTPException(400, "This bank transaction was never flagged as a duplicate")
+    orig = await db.bank_transactions.find_one({"_id": _oid(d["duplicate_of"])})
+    return d, orig
+
+
+@router.get("/{tid}/duplicate")
+async def duplicate_compare(tid: str, user: dict = Depends(require_admin)):
+    d, orig = await _dup_pair(tid)
+    an = duplicate_analysis(d, orig)
+    return {"transaction": _out(d), "match": _out(orig) if orig else None, "score": d.get("duplicate_score", an["score"]),
+            "reasons": d.get("duplicate_detection_reason") or an["reasons"], "date_diff_days": an["date_diff_days"],
+            "reviewable": d["status"] == "duplicate"}
+
+
+@router.post("/{tid}/duplicate/approve")
+async def duplicate_approve_as_new(tid: str, payload: DuplicateApproveIn, user: dict = Depends(require_admin)):
+    """Reviewer confirms this is a separate legitimate transaction → back into the normal pending workflow.
+    Atomic claim on status=duplicate makes retries/double-clicks a no-op (400). Original record untouched."""
+    d, orig = await _dup_pair(tid)
+    an = duplicate_analysis(d, orig)
+    now = now_iso()
+    claim = await db.bank_transactions.update_one({"_id": d["_id"], "status": "duplicate"}, {"$set": {
+        "status": "pending", "duplicate_overridden": True, "duplicate_review_action": "approved_as_new",
+        "duplicate_reviewed_by": user["email"], "duplicate_reviewed_at": now, "duplicate_override_reason": payload.reason.strip(),
+        "duplicate_score": d.get("duplicate_score", an["score"]), "duplicate_detection_reason": d.get("duplicate_detection_reason") or an["reasons"]}})
+    if claim.matched_count == 0:
+        raise HTTPException(400, f"Already {d['status']} — duplicate review is closed for this record")
+    await audit("duplicate_approved_as_new", user["email"], d["_id"], previous={"status": "duplicate", "duplicate_of": d["duplicate_of"]},
+                new={"status": "pending", "reason": payload.reason.strip(), "score": an["score"]})
+    res = await classify(d, user["email"])
+    await db.bank_transactions.update_one({"_id": d["_id"]}, {"$set": {"suggestion": res["suggestion"], "matches": res["matches"],
+                                                                     "classified_at": now_iso()}})
+    return {"ok": True, "transaction": _out(await db.bank_transactions.find_one({"_id": d["_id"]}))}
+
+
+@router.post("/{tid}/duplicate/reject")
+async def duplicate_reject(tid: str, payload: DuplicateRejectIn, user: dict = Depends(require_admin)):
+    """Reviewer confirms a genuine duplicate → audit-only record, no accounting entry, link to original kept."""
+    d, _ = await _dup_pair(tid)
+    now = now_iso()
+    claim = await db.bank_transactions.update_one({"_id": d["_id"], "status": "duplicate"}, {"$set": {
+        "status": "duplicate_rejected", "duplicate_review_action": "rejected_duplicate",
+        "duplicate_reviewed_by": user["email"], "duplicate_reviewed_at": now, "rejected_at": now, "rejected_by": user["email"],
+        "rejection_reason": payload.note.strip() or "Confirmed duplicate"}})
+    if claim.matched_count == 0:
+        raise HTTPException(400, f"Already {d['status']} — duplicate review is closed for this record")
+    await audit("duplicate_rejected", user["email"], d["_id"], new={"duplicate_of": d["duplicate_of"], "note": payload.note.strip()})
+    return {"ok": True, "transaction": _out(await db.bank_transactions.find_one({"_id": d["_id"]}))}
 
 
 @router.post("/{tid}/reclassify")

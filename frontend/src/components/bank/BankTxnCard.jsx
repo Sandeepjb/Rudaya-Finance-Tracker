@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { api, formatApiError, inr } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
-import { Check, X, PencilSimple, Question, ArrowsClockwise, ClockCounterClockwise } from "@phosphor-icons/react";
+import { Check, X, PencilSimple, Question, ArrowsClockwise, ClockCounterClockwise, Warning, ArrowsLeftRight } from "@phosphor-icons/react";
 import { TypeBadge } from "@/components/TypeBadge";
 import { ConfidenceBadge, DirectionBadge, StatusBadge } from "./ConfidenceBadge";
 import { fmtDate, SOURCE_LABEL } from "@/lib/bankInbox";
@@ -17,7 +17,7 @@ function Row({ label, value, mono, modified }) {
   );
 }
 
-export default function BankTxnCard({ txn, onChanged, onEdit, onExplain, onAudit, selectable, selected, onToggle }) {
+export default function BankTxnCard({ txn, onChanged, onEdit, onExplain, onAudit, onDuplicateReview, selectable, selected, onToggle }) {
   const [busy, setBusy] = useState(false);
   const s = txn.suggestion || {};
   const eff = { ...{ type: s.type, account: s.account, project_id: s.project_id, amount: txn.amount, date: txn.transaction_date }, ...(txn.final || txn.user_edits || {}) };
@@ -56,12 +56,26 @@ export default function BankTxnCard({ txn, onChanged, onEdit, onExplain, onAudit
       <div className="text-sm text-neutral-800 border-l-2 border-neutral-300 pl-2" data-testid="card-narration">{txn.narration}</div>
       {txn.bank_reference && <div className="text-[11px] text-neutral-500 font-mono-tab">Ref: {txn.bank_reference}</div>}
 
-      {txn.status === "duplicate" ? (
-        <div className="text-xs text-red-700 bg-red-50 border border-red-200 p-2" data-testid="duplicate-info">
-          Duplicate of bank transaction <span className="font-mono-tab">{txn.duplicate_of}</span>. No accounting entry created.
+      {txn.status === "duplicate" || txn.status === "duplicate_rejected" ? (
+        <div className={`text-xs border p-2 space-y-2 ${txn.status === "duplicate" ? "text-amber-900 bg-amber-50 border-amber-300" : "text-neutral-600 bg-neutral-50 border-neutral-200"}`} data-testid="duplicate-info">
+          <div className="font-semibold tracking-wider flex items-center gap-1"><Warning size={14} /> {txn.status === "duplicate" ? "POSSIBLE DUPLICATE — needs your review" : "REJECTED AS DUPLICATE"}</div>
+          <div>Matches bank transaction <span className="font-mono-tab">{(txn.duplicate_of || "").slice(-8)}</span>{txn.duplicate_score != null && <> · confidence <span className="font-mono-tab" data-testid="card-dup-score">{txn.duplicate_score}%</span></>}. No accounting entry created.</div>
+          {txn.status === "duplicate_rejected" && <div data-testid="dup-rejected-by">Confirmed duplicate by {txn.duplicate_reviewed_by} on {(txn.duplicate_reviewed_at || "").slice(0, 10)}{txn.rejection_reason ? ` — ${txn.rejection_reason}` : ""}</div>}
+          {txn.status === "duplicate" && (
+            <div className="flex flex-wrap gap-2 justify-end pt-1">
+              <Button data-testid="card-dup-compare-btn" size="sm" variant="ghost" className="rounded-none" onClick={() => onDuplicateReview(txn, "compare")}><ArrowsLeftRight size={14} className="mr-1" /> Compare</Button>
+              <Button data-testid="card-dup-reject-btn" size="sm" variant="outline" className="rounded-none border-neutral-400" onClick={() => onDuplicateReview(txn, "reject")}><X size={14} className="mr-1" /> Reject as Duplicate</Button>
+              <Button data-testid="card-dup-approve-btn" size="sm" className="rounded-none bg-emerald-700 hover:bg-emerald-600" onClick={() => onDuplicateReview(txn, "approve")}><Check size={14} className="mr-1" /> Approve as New Transaction</Button>
+            </div>
+          )}
         </div>
       ) : (
         <div className="bg-neutral-50 border border-neutral-200 p-3 space-y-1.5">
+          {txn.duplicate_review_action === "approved_as_new" && (
+            <div className="text-[11px] text-amber-800 border border-amber-300 bg-amber-50 px-2 py-1" data-testid="dup-override-note">
+              Duplicate warning overridden by {txn.duplicate_reviewed_by}: {txn.duplicate_override_reason} <button type="button" className="underline ml-1" data-testid="dup-override-compare" onClick={() => onDuplicateReview(txn, "compare")}>view match</button>
+            </div>
+          )}
           <div className="flex items-center justify-between">
             <div className="text-[10px] uppercase tracking-[0.2em] text-neutral-500">{txn.status === "approved" ? "Approved classification" : "Suggested classification"}</div>
             <span className="text-[10px] text-neutral-500">{SOURCE_LABEL[s.source] || s.source || ""}</span>

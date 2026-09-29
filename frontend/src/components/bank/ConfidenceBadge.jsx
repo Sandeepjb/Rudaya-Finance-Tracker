@@ -31,9 +31,11 @@ export function StatusBadge({ status }) {
     pending: "border-amber-600 text-amber-700 bg-amber-50",
     approved: "border-emerald-600 text-emerald-700 bg-emerald-50",
     rejected: "border-neutral-500 text-neutral-600 bg-neutral-50",
-    duplicate: "border-red-600 text-red-700 bg-red-50",
+    duplicate: "border-amber-600 text-amber-800 bg-amber-50",
+    duplicate_rejected: "border-neutral-400 text-neutral-500 bg-neutral-50",
   };
+  const label = { duplicate: "possible duplicate", duplicate_rejected: "rejected duplicate" }[status] || status;
   return (
-    <span data-testid="status-badge" className={`inline-block text-[10px] uppercase tracking-wider px-2 py-0.5 border ${map[status] || ""}`}>{status}</span>
+    <span data-testid="status-badge" className={`inline-block text-[10px] uppercase tracking-wider px-2 py-0.5 border ${map[status] || ""}`}>{label}</span>
   );
 }
